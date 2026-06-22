@@ -1,4 +1,4 @@
-# Progress Log
+# Progress Log — Tickr
 
 ---
 

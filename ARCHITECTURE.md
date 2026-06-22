@@ -1,4 +1,4 @@
-# Architecture
+# Tickr — Architecture
 
 ## System overview
 

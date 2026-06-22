@@ -1,7 +1,7 @@
-# Equity Research App — CLAUDE.md
+# Tickr — CLAUDE.md
 
 **Stack:** Python 3.11 / FastAPI (engine) · Next.js 14 / TypeScript (web) · PostgreSQL
-**Phase:** 0 (scaffold) complete — Phase 1 (data adapters) next
+**Phase:** 1 (data adapters) complete — Phase 2a (DB setup + migrations) in progress
 **Session log:** PROGRESS.md · **Design rules:** ARCHITECTURE.md
 
 ---
