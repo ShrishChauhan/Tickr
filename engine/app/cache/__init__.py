@@ -1,5 +1,6 @@
 # Caching layer — lazy TTL cache over live data fetches
 from .base import CacheBackend
+from .postgres import PostgresCacheBackend
 from .ttl_config import (
     PRICE_TTL_SECONDS,
     FUNDAMENTALS_TTL_SECONDS,
@@ -10,6 +11,7 @@ from .ttl_config import (
 
 __all__ = [
     "CacheBackend",
+    "PostgresCacheBackend",
     "PRICE_TTL_SECONDS",
     "FUNDAMENTALS_TTL_SECONDS",
     "FILING_REF_TTL_SECONDS",

@@ -1,4 +1,4 @@
-# Abstract cache interface — TODO(Phase 2): implement PostgreSQL-backed TTL cache
+# Abstract cache interface
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
@@ -10,8 +10,9 @@ class CacheBackend(ABC):
         ...
 
     @abstractmethod
-    async def set(self, key: str, value: Any, ttl_seconds: int) -> None:
-        """Store value with TTL. Overwrites existing entry."""
+    async def set(self, key: str, value: Any, ttl_seconds: int, *,
+                  data_type: str = "", ticker: str = "", source: str = "") -> None:
+        """Store value with TTL. Overwrites existing entry. Metadata params used by Postgres backend."""
         ...
 
     @abstractmethod
