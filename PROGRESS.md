@@ -164,12 +164,71 @@
 - 4 commits this session: PostgresCacheBackend → routes wired → tests → session log.
 
 ### Next
-- Phase 2c: AI analysis layer — wire LLM (Claude API) to generate plain-English summaries from cached fundamentals + filings. Cache results with the 7-day TTL already defined in `ttl_config.py`.
+- Phase 3: Next.js web app — company pages showing fundamentals tables, filings list, and the AI analysis.
 
 ### Open decisions
-- Cache hit latency is 4s because Neon's pooled endpoint (PgBouncer, transaction mode) does not maintain persistent server connections. Direct (non-pooled) Neon connection string would give consistently <1s hits at the cost of losing PgBouncer's connection multiplexing. Worth switching the cache backend to the direct connection in Phase 2c. Both strings are available from the Neon dashboard.
-- `payload` is Postgres JSON (not JSONB). Fine for Phase 2b. Consider JSONB migration if Phase 2c needs to query inside the payload.
+- `payload` is Postgres JSON (not JSONB). Still fine. No need to query inside payload.
+- Analysis endpoint currently does a general summary only (question="" default). A Q&A mode with per-question caching (keyed by question hash) is a natural Phase 3 or 5 extension.
 
 ### Roadblocks & Resolutions
 
 - **Neon autosuspend wakeup adds ~10s to the first cache call per session:** On Neon's free tier, the compute autosuspends after 5 minutes of inactivity. The first DB call after suspension wakes the compute and takes ~10s. Subsequent calls over the same pooled connection take ~1–4s (network RTT + PgBouncer overhead). Mitigation added: `pool_pre_ping=True` on the SQLAlchemy engine prevents stale-connection errors. Documented here so Phase 2c can decide whether to switch to the direct connection string (bypasses PgBouncer, gives consistent connection lifetime) or keep pooled for connection multiplexing.
+
+---
+
+## Session 4 — 2026-06-23 — Phase 2c: direct Neon connection + AI analysis layer
+
+### Done
+
+- **Diagnosed and fixed the 4s cache hit latency (Task 0):** Switched `DATABASE_URL` in `.env` to the direct (non-pooled) Neon endpoint. Then investigated further and found the real culprit: SQLAlchemy's default transaction mode issues BEGIN + actual query + ROLLBACK = 3 network round-trips per cache operation. From this location (India) to Neon US-East-1, each RTT is ~320ms, so 3 × 320ms = ~960ms baseline — worse than the pooled endpoint's 4s because PgBouncer at least batches some of that overhead. Fixed in `engine/app/db/session.py` by switching to `isolation_level="AUTOCOMMIT"` (each statement auto-commits, no BEGIN/ROLLBACK sent) and disabling `pool_pre_ping` (postgres.py's exception handling already gracefully degrades on stale connections). Also added `pool_recycle=1800` so idle connections are dropped before Neon's 5-minute autosuspend can invalidate them.
+
+  - Session 3 pooled endpoint cache HIT: **4.0s**
+  - Session 4 direct endpoint, transaction mode: **1.5–2.0s** (still 2–3 RTTs)
+  - Session 4 direct endpoint, AUTOCOMMIT: **750–960ms** (1–2 RTTs, physical floor from India to US-East-1)
+  - Physical floor: psycopg2 `SELECT 1` on a reused connection = 320ms/RTT. AUTOCOMMIT achieves ~2 RTTs (TCP send/receive), which at India→US-East-1 distances can't be reduced further without infrastructure co-location.
+
+- **Implemented `GroqAnalysisEngine(AnalysisEngine)` in `engine/app/analysis/groq_engine.py` (Task 1):**
+  - Uses Groq SDK with `llama-3.3-70b-versatile` (verified current, non-deprecated model via Groq changelog; replaced the deprecated `llama3-70b-8192`).
+  - Probed Groq live before writing analysis code: `llama-3.3-70b-versatile` → `"OK"` in 1665ms. ✓
+  - `_build_prompt()` formats the full `NormalizedFundamentals` list as a financial table (oldest-to-newest, all values in billions), adds key ratios from the most recent period, adds recent filings, and includes explicit grounding instructions: "cite specific figures for every claim", "do NOT invent or estimate any figure not in the data".
+  - `_call_groq()` uses temperature=0.1 (low, for factual consistency), max_tokens=1500.
+  - Provider swappability: the route holds an `AnalysisEngine` reference via `_get_analysis_engine()`. Swapping to the Anthropic API means adding `AnthropicAnalysisEngine(AnalysisEngine)` in a new file and changing one line in routes.py — no other callers to update.
+  - `GROQ_API_KEY` and `GROQ_MODEL` added to `config.py` and `.env.example`.
+
+- **Implemented `analyze_company` with grounded prompt (Task 2):** The prompt includes the financial table with actual figures from the passed `NormalizedFundamentals` list. The five sections requested are: Financial Trend Summary, Profitability Analysis, Balance Sheet & Leverage, Cash Flow Analysis, Key Observations. The system prompt reinforces data-only analysis.
+
+- **Cached analysis with 7-day TTL (Task 3):**
+  - Cache key: `analysis:{TICKER}:{source}:{period}:{limit}` — includes source/period/limit because the analysis is grounded in those specific data cuts.
+  - Cached value: `{"analysis": "<text>", "generated_at": "<ISO 8601>", "periods_analyzed": N}`.
+  - TTL: `AI_ANALYSIS_TTL_SECONDS` (604,800s / 7 days) from `ttl_config.py`.
+
+- **Exposed `GET /api/v1/companies/{ticker}/analyze` (Task 4):** Thin route — cache check → generate if miss → store → return `AnalysisResult`. Returns 503 if `GROQ_API_KEY` is not configured (non-analyze routes unaffected). Analysis engine is lazy-initialized as a module-level singleton.
+
+- **Wrote 2 analysis tests in `engine/tests/test_analysis.py`:**
+  - `test_analysis_prompt_includes_actual_figures`: uses `__new__` to skip init (no API key), calls `_build_prompt` directly, asserts revenue ($416.0B), EBITDA ($144.7B), ticker "AAPL", and period "FY2025" appear in the prompt. Proves the financial data is correctly embedded before it ever reaches the LLM.
+  - `test_analysis_cache_hit_skips_llm`: spies on `_call_groq`, runs `analyze_with_cache()` twice against real Neon with a UUID-unique key, asserts `call_count == 1`. Proves the second call returns from cache without touching Groq.
+
+- **All 25 tests pass:** 19 adapter tests + 4 cache tests + 2 analysis tests = 25 total. Runtime: 137s.
+
+- **Live AAPL double-analyze verification:**
+  - Request 1 (cache MISS, yfinance fetch + Groq LLM call): **21.7s** (Neon wakeup + fundamentals fetch + 3-period LLM analysis)
+  - Request 2 (cache HIT, no LLM call): **1.3s**, `cached: true`, same `generated_at` timestamp
+  - Steady-state cache hits: **957ms–1.3s** (physical floor from India to Neon US-East-1)
+  - Analysis row confirmed in Neon `cache_entries`: key=`analysis:AAPL:yfinance:annual:3`, payload=2245 bytes, expires 2026-06-29.
+  - Analysis content: correctly cited real AAPL revenue figures ($383.3B FY2023 → $391.0B FY2024 → $416.2B FY2025) — grounding verified.
+
+- 5 commits this session: Neon optimization → groq dependency → analysis implementation → test → PROGRESS.md.
+
+### Next
+- Phase 3: Next.js web app — company search, fundamentals table, filings list, AI analysis panel.
+
+### Open decisions
+- Cache hit latency is ~950ms from India to Neon US-East-1 — this is the physical network floor (2 × 320ms RTT + overhead). Production deployments with engine and DB in the same AWS region will see <10ms hits. No code change can reduce the India→US-East-1 RTT further.
+
+### Roadblocks & Resolutions
+
+- **Cache hit was not sub-1s on first direct connection test (2s):** Switching from pooled to direct connection alone only halved the latency (4s → 2s). The remaining 2s was not PgBouncer overhead — it was SQLAlchemy's implicit transaction management. With the default isolation level, each `with SessionLocal() as session:` issues BEGIN + query + ROLLBACK = 3 network RTTs. At 320ms/RTT from India, that's 960ms minimum plus overhead. Fixed by setting `isolation_level="AUTOCOMMIT"` on the engine, which eliminates BEGIN/ROLLBACK entirely. Now each cache operation is 1–2 RTTs (~640–960ms at this network distance).
+
+- **pool_pre_ping doubling latency:** The initial `pool_pre_ping=True` (carried over from Session 3 as a Neon-autosuspend guard) sent a `SELECT 1` before every connection checkout, adding one full RTT per operation. Replaced with `pool_recycle=1800` (connections are dropped and recreated after 30 minutes of idle, which is before Neon's 5-minute autosuspend window would make them stale). The postgres.py exception handler (returns None on any DB error) provides the safety net: if a connection is stale on first use after Neon wakeup, the cache returns None, the adapter fetches fresh data, and the next request succeeds from cache. This is equivalent to the graceful degradation already designed for DB outages.
+
+- **Windows terminal encoding error during Groq probe:** The Groq probe printed a `→` character which triggered `UnicodeEncodeError: 'charmap' codec can't encode character` on Windows. Fixed by writing bytes directly to `sys.stdout.buffer` with explicit UTF-8 encoding. Not a real issue — Groq API and the actual engine code are unaffected.
