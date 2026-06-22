@@ -16,6 +16,7 @@ dependencies = [
     "pydantic-settings>=2.2.0",
     # psycopg2-binary requires PostgreSQL to be configured — see PROGRESS.md
     "psycopg2-binary>=2.9.0",
+    "groq>=0.9.0",
 ]
 
 [project.optional-dependencies]
