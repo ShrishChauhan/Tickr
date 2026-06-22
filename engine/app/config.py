@@ -1,5 +1,9 @@
 # Loads all runtime configuration from .env via pydantic-settings
+from pathlib import Path
 from pydantic_settings import BaseSettings
+
+# Resolve .env at repo root regardless of CWD (Alembic runs from engine/)
+_ENV_FILE = Path(__file__).parent.parent.parent / ".env"
 
 
 class Settings(BaseSettings):
@@ -12,7 +16,7 @@ class Settings(BaseSettings):
     # SEC requires a contact email in User-Agent; set to any valid email
     SEC_IDENTITY: str = "contact@example.com"
 
-    model_config = {"env_file": ".env"}
+    model_config = {"env_file": str(_ENV_FILE)}
 
 
 settings = Settings()
