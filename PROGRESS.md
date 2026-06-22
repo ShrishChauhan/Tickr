@@ -128,3 +128,48 @@
 - **DATABASE_URL pointing to localhost during Alembic run:** The first `alembic revision --autogenerate` attempt failed with `NoSuchModuleError: Can't load plugin: sqlalchemy.dialects:driver` — Alembic was falling back to the `alembic.ini` placeholder URL because pydantic-settings couldn't find `.env` when running from the `engine/` subdirectory. Root cause: `model_config = {"env_file": ".env"}` resolves relative to CWD, and CWD was `engine/` not the repo root. Fixed by changing the `env_file` value in `config.py` to an absolute path derived from `__file__`: `str(Path(__file__).parent.parent.parent / ".env")`. Migration succeeded on the second attempt.
 
 - **Neon connection test connecting to localhost on first run:** The `SELECT 1` test was run before the `config.py` fix was applied; at that point the DATABASE_URL in `.env` was still the localhost placeholder from `.env.example` (user had not yet pasted the Neon URL). User updated `.env` and the test passed after the fix.
+
+---
+
+## Session 3 — 2026-06-23 — Phase 2b: PostgreSQL TTL cache layer
+
+### Done
+
+- Implemented `PostgresCacheBackend` in `engine/app/cache/postgres.py` — implements the abstract `CacheBackend` interface against the `cache_entries` table using sync SQLAlchemy wrapped in `asyncio.run_in_executor`, the same pattern the adapters use for blocking I/O. `get()` queries by `cache_key` with an `expires_at > now()` filter; `set()` uses PostgreSQL UPSERT (`INSERT ... ON CONFLICT (cache_key) DO UPDATE`) for atomic writes; `delete()` hard-deletes by key. Graceful degradation on every DB call: any exception logs a warning and returns None/swallows, so a Neon outage can't 500 a request.
+
+- Updated `CacheBackend.set()` abstract signature to add keyword-only `data_type`, `ticker`, `source` parameters (with empty-string defaults so future simpler backends can ignore them). Required to populate the non-nullable columns in `cache_entries`.
+
+- Wired the cache into all three API routes (`engine/app/api/routes.py`):
+  - Cache key scheme: `{source}:company:{TICKER}`, `{source}:fundamentals:{TICKER}:{period}:{limit}`, `{source}:filings:{TICKER}:{limit}:{types_str}`.
+  - Each endpoint: check cache → HIT returns immediately (deserializing JSON payload back to Pydantic model); MISS fetches from adapter, serializes with `model.model_dump(mode='json')`, caches with the appropriate TTL, returns result.
+  - Routes and response models unchanged; graceful degradation preserved (cache failure falls through to adapter).
+
+- JSON round-trip confirmed correct for all field types: `date` → ISO string → `date` (via pydantic v2 `model_dump(mode='json')` + `model_validate`), `datetime` with timezone, nested models, str enums (Market, Exchange, Period, FilingType, etc.). No manual serialization needed.
+
+- Added `pool_pre_ping=True` to `create_engine()` in `engine/app/db/session.py` — prevents stale-connection errors when Neon autosuspends and drops connections.
+
+- Wrote 4 cache-specific tests in `engine/tests/test_cache.py` (all against real Neon DB):
+  - `test_cache_round_trip_company`: CompanyIdentity round-trip, enum types verified.
+  - `test_cache_round_trip_fundamentals`: NormalizedFundamentals list round-trip; asserts `period_end_date` is `date` (not str), `fetched_at` is `datetime`, `exchange` is an Exchange enum.
+  - `test_cache_expiry`: TTL=1s entry returns None after 2 seconds.
+  - `test_cache_hit_skips_adapter`: spy wrapper on yfinance `get_company`; two cache-or-fetch calls → adapter called exactly once. Proves the second call returns from cache without touching the adapter.
+  - All 4 passed. All 19 existing Phase 1 adapter tests still pass (23 total).
+
+- **Live verification (AAPL fundamentals, yfinance, annual, limit=3):**
+  - First request (cache MISS, live yfinance fetch): **18.1s**
+  - Second request (cache HIT, Neon): **4.0s** — 78% faster
+  - Third request (cache HIT, pooled connection): **3.9s**
+  - Cache row confirmed in Neon: `yfinance:fundamentals:AAPL:annual:3`, 4633 bytes payload, expires 24h out.
+
+- 4 commits this session: PostgresCacheBackend → routes wired → tests → session log.
+
+### Next
+- Phase 2c: AI analysis layer — wire LLM (Claude API) to generate plain-English summaries from cached fundamentals + filings. Cache results with the 7-day TTL already defined in `ttl_config.py`.
+
+### Open decisions
+- Cache hit latency is 4s because Neon's pooled endpoint (PgBouncer, transaction mode) does not maintain persistent server connections. Direct (non-pooled) Neon connection string would give consistently <1s hits at the cost of losing PgBouncer's connection multiplexing. Worth switching the cache backend to the direct connection in Phase 2c. Both strings are available from the Neon dashboard.
+- `payload` is Postgres JSON (not JSONB). Fine for Phase 2b. Consider JSONB migration if Phase 2c needs to query inside the payload.
+
+### Roadblocks & Resolutions
+
+- **Neon autosuspend wakeup adds ~10s to the first cache call per session:** On Neon's free tier, the compute autosuspends after 5 minutes of inactivity. The first DB call after suspension wakes the compute and takes ~10s. Subsequent calls over the same pooled connection take ~1–4s (network RTT + PgBouncer overhead). Mitigation added: `pool_pre_ping=True` on the SQLAlchemy engine prevents stale-connection errors. Documented here so Phase 2c can decide whether to switch to the direct connection string (bypasses PgBouncer, gives consistent connection lifetime) or keep pooled for connection multiplexing.
