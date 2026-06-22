@@ -1,4 +1,5 @@
-# AI analysis layer — interface + stub; live provider wired in Phase 2
+# AI analysis layer — interface + Groq provider
 from .interface import AnalysisEngine
+from .groq_engine import GroqAnalysisEngine
 
-__all__ = ["AnalysisEngine"]
+__all__ = ["AnalysisEngine", "GroqAnalysisEngine"]
