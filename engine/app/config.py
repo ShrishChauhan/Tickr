@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     LLM_BASE_URL: str = "https://api.anthropic.com"
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
+    # SEC requires a contact email in User-Agent; set to any valid email
+    SEC_IDENTITY: str = "contact@example.com"
 
     model_config = {"env_file": ".env"}
 
