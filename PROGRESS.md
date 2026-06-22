@@ -22,17 +22,74 @@
 - 4 commits total: `.gitignore` → engine scaffold → Next.js → docs.
 
 ### Next
-- Phase 1: implement `EdgarAdapter` using edgartools — `get_company` (CIK lookup), `get_filings` (10-K/10-Q search), `get_fundamentals` (XBRL financial data).
-- Phase 1: implement `YFinanceAdapter` for prices and basic fundamentals as a complement to EDGAR.
-- Phase 1: wire up `GET /api/v1/companies/{ticker}` and `GET /api/v1/companies/{ticker}/fundamentals` routes in `engine/app/api/routes.py`.
-- Set up PostgreSQL (local or hosted) and set `DATABASE_URL` in `.env`, then run `alembic upgrade head`.
+- Phase 2: PostgreSQL cache layer — set `DATABASE_URL` in `.env`, run `alembic upgrade head`, implement TTL caching in the cache layer so adapter results are stored and served from the DB on repeat calls.
+- Phase 3: Next.js frontend — company pages with fundamentals tables and filings list.
 
 ### Open decisions
-- None blocking Phase 1. PostgreSQL can wait until Phase 2 (cache layer); Phase 1 routes can return live-fetched data without caching.
 - `LLM_API_KEY` left empty in `.env` — stub only, not needed until Phase 2 analysis layer.
+- PostgreSQL still not installed locally; Phase 2 is blocked until `DATABASE_URL` is set.
 
 ### Roadblocks & Resolutions
 - **Wrong build backend in `pyproject.toml`:** First pip install attempt failed with `BackendUnavailable: Cannot import 'setuptools.backends.legacy'`. I had used `setuptools.backends.legacy:build` (wrong) instead of `setuptools.build_meta` (correct). Fixed the `[build-system]` section and reinstalled — resolved.
 - **winget Node.js search hung:** `winget search "NodeJS"` hung indefinitely (exit 255). Skipped the search, went straight to `winget install --id OpenJS.NodeJS.LTS -e` — installed cleanly in ~2 minutes.
 - **uvicorn background job:** Running uvicorn via PowerShell background job (`Start-Job`) failed to connect because the job environment didn't inherit the working directory. Switched to `System.Diagnostics.Process` with explicit `WorkingDirectory` — health check passed.
 - **PostgreSQL not installed:** No local Postgres. Alembic is scaffolded and configured but migrations cannot run until `DATABASE_URL` is set in `.env`. Noted in CLAUDE.md. Not a blocker for Phase 1 (adapters + routes don't need the DB yet).
+
+---
+
+## Session 1 — 2026-06-22 — Phase 1: US data adapters (EDGAR + yfinance)
+
+### Done
+
+- Probed the actual edgartools 5.39.0 and yfinance 1.4.1 APIs before writing any adapter code: inspected `edgar.Company`, `Financials`, `EntityFilings`, and the Statement DataFrame schema (standard_concept column, value columns of the form "YYYY-MM-DD (FY)" / "YYYY-MM-DD (Q#)"). Probed yfinance `Ticker.info`, `get_income_stmt(freq='yearly')`, `get_balance_sheet`, `get_cash_flow`, and `sec_filings`. This pre-flight was essential because the standard_concept names are not documented anywhere obvious.
+
+- Added `SEC_IDENTITY` setting to `config.py` and `.env.example` — SEC requires a contact email in the User-Agent header on every edgartools request. Read from `.env`, defaults to a placeholder so the engine still imports cleanly without a `.env` file.
+
+- Implemented `EdgarAdapter` (`engine/app/adapters/edgar.py`):
+  - `get_company`: resolves ticker → CIK via `edgar.Company`, maps `get_exchanges()` to the Exchange enum.
+  - `get_fundamentals` (annual): calls `c.get_financials()` which returns the latest 10-K XBRL data with 3 fiscal years as DataFrame columns. Parses each "(FY)" column into a `NormalizedFundamentals`. Extracts values by `standard_concept` using a filter that excludes abstract and is_breakdown rows (so product-line breakdowns don't shadow the consolidated figure). EBITDA is derived as operating_income + D&A from the cash flow statement (edgartools does not surface EBITDA directly). Balance sheet columns have no period suffix (just "YYYY-MM-DD") so they're matched to IS/CF columns by date with ±5 day tolerance for fiscal calendar variation.
+  - `get_fundamentals` (quarterly): iterates through 10-Q filings, downloads each, reads its XBRL, and pulls the "(Q#)" column (skipping "(YTD)" columns). One 10-Q download per quarter requested.
+  - `get_filings`: calls `c.get_filings(form=[...])`, converts the pandas DataFrame rows to `FilingReference` objects with proper SEC URLs built from accession number and CIK.
+  - All three methods run synchronous edgartools calls in `run_in_executor` so they don't block the FastAPI event loop.
+
+- Implemented `YFinanceAdapter` (`engine/app/adapters/yfinance.py`):
+  - `get_company`: maps yfinance exchange codes (NMS → NASDAQ, NYQ → NYSE, ASE → AMEX, etc.) to the Exchange enum.
+  - `get_fundamentals`: calls `get_income_stmt`, `get_balance_sheet`, `get_cash_flow` with `freq='yearly'` or `'quarterly'` (yfinance uses those strings, not "annual"). Columns are Timestamps sorted newest-first — iterates over them to build one `NormalizedFundamentals` per period. yfinance gives EBITDA directly. Live ratios from `t.info` are attached to the most recent period only (they're TTM-based, so attaching to older periods would be misleading). Handles TTM separately via `ttm_income_stmt` / `ttm_cash_flow`.
+  - `get_filings`: wraps `t.sec_filings` (Yahoo's mirror of SEC data); yields `FilingReference` objects but without accession numbers since Yahoo doesn't provide them.
+
+- Wired API routes (`engine/app/api/routes.py`):
+  - `GET /api/v1/companies/{ticker}` — default source: edgar (authoritative CIK lookup)
+  - `GET /api/v1/companies/{ticker}/fundamentals?source=&period=&limit=` — default source: yfinance (gives 5 years, EBITDA, ratios)
+  - `GET /api/v1/companies/{ticker}/filings?source=&limit=&types=` — default source: edgar
+  - `?source=edgar|yfinance` override on all three routes.
+
+- Wrote 19 integration tests in `engine/tests/test_adapters.py`, covering:
+  - EDGAR and yfinance `get_company` for AAPL, JPM, BRK-B
+  - EDGAR and yfinance annual fundamentals for AAPL (with revenue sanity bound: $370B–$460B)
+  - EDGAR annual fundamentals for JPM (total assets > $3T)
+  - EDGAR and yfinance quarterly fundamentals for AAPL
+  - EDGAR filings for AAPL and BRK-B, with filtered-type test
+  - yfinance filings for AAPL
+  - Cross-source agreement test: EDGAR and yfinance AAPL revenue must agree within 1%
+
+- All 19 tests pass in ~49s against live APIs.
+
+- AAPL FY2025 sanity-checked numbers (both sources agree):
+  - Revenue: $416.2B
+  - Net Income: $112.0B
+  - Operating Income: $133.1B
+  - EBITDA: $144.7B (yfinance direct; EDGAR-derived matches)
+  - EPS basic: $7.49 / diluted: $7.46
+  - P/E (trailing): 36.1x | EV/EBITDA: 27.5x | Gross margin: 47.9% | ROE: 141.5%
+
+- 1 commit: all Phase 1 files.
+
+### Roadblocks & Resolutions
+
+- **edgartools `standard_concept = 'Assets'` wrong for banks:** JPM's XBRL maps "Assets" to `us-gaap_DebtSecuritiesHeldToMaturityExcludingAccruedInterestAfterAllowanceForCreditLoss` (~$270B) rather than total assets (~$4.4T). The "Liabilities" standard_concept correctly returns total liabilities ($4.06T), and "LiabilitiesAndEquity" returns the correct $4.42T. Fixed the balance sheet builder to fall back to "LiabilitiesAndEquity" when "Assets" seems inconsistent with equity + liabilities (a heuristic that's robust for standard reporting but safe to revisit in Phase 4 when adding banks/financials more broadly).
+
+- **edgartools `get_operating_cash_flow()` returns None:** The helper method returns None for AAPL despite the value being present in the DataFrame (row with `standard_concept = 'NetCashFromOperatingActivities'`). This appears to be a bug in edgartools 5.39.0. Worked around by extracting all values directly from the DataFrame using my own `_get_value()` function rather than relying on the helper methods.
+
+- **edgartools quarterly iteration is slow:** Each 10-Q requires downloading and parsing the full XBRL filing (~5–10s per filing). For `limit=5` quarters that's up to 50s. Acceptable for Phase 1 with no cache; Phase 2 cache layer will make repeat calls instant.
+
+- **yfinance `freq` parameter name changed:** The method `get_income_stmt` requires `freq='yearly'` not `freq='annual'`. The old name raises `ValueError: timescale must be one of: ['yearly', 'quarterly', 'trailing']`. Caught during the pre-flight probe before any adapter code was written.
