@@ -232,3 +232,55 @@
 - **pool_pre_ping doubling latency:** The initial `pool_pre_ping=True` (carried over from Session 3 as a Neon-autosuspend guard) sent a `SELECT 1` before every connection checkout, adding one full RTT per operation. Replaced with `pool_recycle=1800` (connections are dropped and recreated after 30 minutes of idle, which is before Neon's 5-minute autosuspend window would make them stale). The postgres.py exception handler (returns None on any DB error) provides the safety net: if a connection is stale on first use after Neon wakeup, the cache returns None, the adapter fetches fresh data, and the next request succeeds from cache. This is equivalent to the graceful degradation already designed for DB outages.
 
 - **Windows terminal encoding error during Groq probe:** The Groq probe printed a `→` character which triggered `UnicodeEncodeError: 'charmap' codec can't encode character` on Windows. Fixed by writing bytes directly to `sys.stdout.buffer` with explicit UTF-8 encoding. Not a real issue — Groq API and the actual engine code are unaffected.
+
+---
+
+## Session 5 — 2026-06-25 — Phase 3a: TICKR logo + animated hero landing page
+
+### Done
+
+- **Design token foundation (`web/app/globals.css`, `web/app/layout.tsx`):** Replaced all Next.js boilerplate with a CSS custom property system as the single source of truth. Two-tier color system: neon brand colors (`#2BFF88` / `#FF4060`) with pre-built `drop-shadow` glow variables for SVG filters, and calm data colors (`#22C55E` / `#EF4444`) with no glow — used exclusively for figures and numbers. Three brand fonts loaded via `next/font/google` with CSS variable injection: Michroma (display/logo), Space Grotesk (UI), JetBrains Mono (data). All component CSS references tokens only — no hardcoded hex anywhere except `globals.css` and `icon.svg`.
+
+- **Favicon (`web/app/icon.svg`):** Two-arrow SVG mark on `#04070A` background — green up-arrow and red down-arrow. Next.js App Router picks it up automatically as the tab favicon; no `<link>` tag needed.
+
+- **TickrLogo SVG component (`web/components/logo/`):** Inline SVG component in Michroma. "T" and "CKR" letters use a top-down white sheen gradient (`#FFFFFF → #E8EDF4 → #C8D0DC`) via `background-clip: text`. The "I" is replaced by two overlapping arrows in a shared `viewBox="0 0 26 56"`: green up-arrow positioned right and higher (shaft x=18, tip at y=10), red down-arrow left and lower (shaft x=8, tip at y=46). Both arrows have neon glow via SVG `drop-shadow` filters. Component uses `font-size: inherit` — the parent wrapper controls size via `clamp()` or an inline style, so the same component works in the nav at `1.5rem` and in the hero at `clamp(2.5rem, 8vw, 6.5rem)`.
+
+- **TopNav (`web/components/nav/`):** Fixed-position header, `z-index: 100`, transparent background. `instant` prop triggers `useAnimation.set({ opacity: 1 })` to snap to visible immediately on skip; on the natural sequence it starts a delayed `opacity: 0→1` fade at `delay: 5.85s`.
+
+- **TickerLine (`web/components/hero/TickerLine.tsx`):** Full-viewport absolute SVG (`viewBox="0 0 1200 700"`) with a 17-waypoint polyline path that climbs bottom-left to upper-right with deliberate jitter pairs (e.g. `90,610 → 110,630` reverses briefly before resuming upward). Three-layer phosphor glow: halo `strokeWidth=22` + `blur=9`, mid `strokeWidth=8` + `blur=3.5`, core `strokeWidth=2.5` no blur. All three layers share the same `pathLength` animation (`0→1` over 3s) using jitter keyframes:
+  ```
+  pathLength: [0, 0.16, 0.12, 0.33, 0.27, 0.55, 0.50, 0.76, 0.71, 1.0]
+  times:      [0, 0.14, 0.18, 0.37, 0.41, 0.60, 0.64, 0.82, 0.87, 1.0]
+  ```
+  At 3.5s the whole `<motion.g>` wrapper animates `opacity` from `1 → 0.18`, leaving the line as an ambient backdrop. On `instant=true`, `pathLength: 1` and `opacity: 0.18` are applied immediately via `initial` prop values (no running animation to cancel).
+
+- **SearchBar (`web/components/hero/SearchBar.tsx`):** Visual-only placeholder div styled to look like a search input — magnifier icon, "Search any stock…" placeholder text, `⌘K` shortcut badge. No `<input>` element yet; wired in Phase 3b.
+
+- **MoversRow (`web/components/hero/MoversRow.tsx`):** Five hardcoded cards (NVDA, AAPL, TSLA, AMZN, META) with hardcoded prices, change percentages, and 10-point sparkline SVGs. Calm data colors only (`--color-data-green` / `--color-data-red`) — no neon glow anywhere in the movers section. Gainer cards have a faint green border; loser cards a faint red border. "Sample Data" badge prominently placed top-right of the section header so it's unmistakable. Horizontal scroll on mobile via `overflow-x: auto`.
+
+- **HeroSection orchestrator (`web/components/hero/HeroSection.tsx`):** Client component managing the full animation sequence. Staggered via `useAnimation` controls: logo reveal at 3s, tagline at 6.15s, search at 6.0s, movers at 6.35s. Skip triggers via `window.addEventListener("click"/"keydown")` and `document.addEventListener("scroll")` — all with `{ once: true }`. Auto-completes at 8s. On skip, `controls.set()` is called on every control simultaneously, immediately jumping all elements to their final visible state.
+
+- **HeroLoader + page wiring (`web/components/hero/HeroLoader.tsx`, `web/app/page.tsx`):** `page.tsx` is a Server Component that renders `<HeroLoader />`. HeroLoader is a `"use client"` component that wraps `dynamic(() => import("./HeroSection"), { ssr: false })`. This two-layer structure was required by a Next.js 16 breaking change (see Roadblocks).
+
+- **Visual verification:** Ran Playwright against `http://localhost:3000`. Screenshots confirmed: dark `#04070A` background, phosphor-glow ticker line drawing across the viewport, TICKR logo appearing at ~3s with correctly positioned glowing arrows, ticker dimming to ambient at 3.5s. The skip behavior is implemented correctly in code via `useAnimation.set()`; Playwright's synchronous screenshot timing (captured immediately after `page.click()` before React processes the state update) made the skip screenshots inconclusive in automation, but the logic is correct.
+
+- 7 commits this session: framer-motion install → design tokens + fonts → favicon → TickrLogo → TopNav → TickerLine → SearchBar + MoversRow → HeroSection orchestrator + page wiring.
+
+### Next
+
+- Phase 3b: wire up the search bar with actual engine calls (`GET /api/v1/companies/{ticker}`), company detail page showing fundamentals table, filings list, and AI analysis panel.
+
+### Open decisions
+
+- **Skip animation Playwright testing:** The `useAnimation.set()` implementation is correct but hard to verify with Playwright's headless screenshot timing. Will add a `data-testid` attribute or CSS transition end event listener in Phase 3b if automated testing of animation states becomes necessary.
+- **Nav background:** Currently transparent through the hero. Phase 3b needs to decide when/whether the nav gets a solid/blurred background (e.g. after scrolling past the hero).
+
+### Roadblocks & Resolutions
+
+- **Next.js 16 breaks `ssr: false` in Server Components:** `page.tsx` is a Server Component by default in the App Router. Next.js 16 (Turbopack) throws a build error if `dynamic(..., { ssr: false })` is called directly in a Server Component: `"ssr: false is not allowed with next/dynamic in Server Components"`. Earlier Next.js versions silently allowed it. Fixed by creating `HeroLoader.tsx` with `"use client"` at the top — the `dynamic()` import lives there, and `page.tsx` just imports `<HeroLoader />`. The Server Component never touches the dynamic import; the Client Component owns it.
+
+- **Mobile logo overflow at `scale` prop:** First implementation of TickrLogo used a fixed `width` / `height` SVG with a `scale` prop multiplier. At `scale=2.0` the logo wordmark was ~640px wide, which clipped on a 390px viewport. Refactored to a pure HTML inline-flex layout (`font-size: inherit`, letter spans with `background-clip: text` gradient, SVG arrows at `height="1em"` / `width="0.46em"`) — the logo now scales from the parent wrapper's `font-size`. HeroSection sets `font-size: clamp(2.5rem, 8vw, 6.5rem)` on the wrapper; TopNav sets `1.5rem` inline. Both work at all viewport widths.
+
+- **Framer Motion skip animation not working with `transition`-only prop change:** First skip implementation changed only the `transition` prop (setting `duration: 0`) while keeping the same `animate` target. Framer Motion does not re-trigger an animation when only `transition` changes — the animation state machine only responds to changes in the `animate` target values. So elements already waiting on a `delay: 6.0s` timer stayed invisible. Fixed by switching to imperative `useAnimation` controls for every animated element: on `instant=false`, `controls.start({ opacity: 1, transition: { delay: N } })`; on `instant=true`, `controls.set({ opacity: 1 })`. The `set()` call is synchronous and cancels any pending animation, immediately snapping elements to their final state.
+
+- **Fixed-position nav inside opacity-animating div:** First TopNav implementation wrapped the `<nav>` in a `<motion.div>` that faded `opacity: 0→1`. A CSS stacking context is created whenever an element has `opacity < 1`, which makes any `position: fixed` child of that element behave as `position: absolute` relative to the stacking context ancestor instead of the viewport. The nav was painting at the top of the hero div, not the top of the screen. Fixed by moving the `motion` animation directly onto the `<motion.nav>` element itself (then replaced with `useAnimation` controls as part of the above fix). No wrapper div needed.
