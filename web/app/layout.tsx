@@ -1,20 +1,29 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Michroma, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const michroma = Michroma({
+  weight: "400",
+  variable: "--font-michroma",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
+  variable: "--font-space-grotesk",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Tickr",
-  description: "Bloomberg-lite equity research terminal",
+  title: "Tickr — AI Equity Research Terminal",
+  description: "Bloomberg-lite equity research for everyone.",
 };
 
 export default function RootLayout({
@@ -23,7 +32,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html
+      lang="en"
+      className={`${michroma.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
+    >
       <body>{children}</body>
     </html>
   );
