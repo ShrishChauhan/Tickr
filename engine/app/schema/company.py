@@ -6,20 +6,36 @@ from pydantic import BaseModel
 
 class Market(str, Enum):
     US = "US"
-    IN = "IN"          # Phase 4
+    UK = "UK"
+    DE = "DE"
+    JP = "JP"
+    IN = "IN"
+    BR = "BR"
+    MX = "MX"
 
 
 class Exchange(str, Enum):
-    NYSE = "NYSE"
+    NYSE   = "NYSE"
     NASDAQ = "NASDAQ"
-    AMEX = "AMEX"
-    NSE = "NSE"        # Phase 4
-    BSE = "BSE"        # Phase 4
+    AMEX   = "AMEX"
+    LSE    = "LSE"    # London Stock Exchange
+    XETRA  = "XETRA" # Deutsche Börse / Frankfurt
+    TSE    = "TSE"    # Tokyo Stock Exchange
+    NSE    = "NSE"    # National Stock Exchange (India)
+    BSE    = "BSE"    # Bombay Stock Exchange
+    B3     = "B3"     # Brasil Bolsa Balcão
+    BMV    = "BMV"    # Bolsa Mexicana de Valores
+    OTHER  = "OTHER"  # Fallback for unmapped exchanges
 
 
 class Currency(str, Enum):
     USD = "USD"
-    INR = "INR"        # Phase 4
+    GBP = "GBP"
+    EUR = "EUR"
+    JPY = "JPY"
+    INR = "INR"
+    BRL = "BRL"
+    MXN = "MXN"
 
 
 class CompanyIdentity(BaseModel):
@@ -28,6 +44,7 @@ class CompanyIdentity(BaseModel):
     market: Market
     exchange: Exchange
     currency: Currency                  # primary reporting currency
+    asset_type: str = "equity"          # "equity", "crypto", "forex", "commodity", "index"
     cik: Optional[str] = None           # SEC CIK — US only
     isin: Optional[str] = None
     lei: Optional[str] = None

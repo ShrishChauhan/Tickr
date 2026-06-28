@@ -23,6 +23,49 @@ _EXCHANGE_MAP = {
     # AMEX
     "ASE": Exchange.AMEX,
     "ASQ": Exchange.AMEX,
+    # Global (codes returned by yfinance — suffix map is primary; these are fallbacks)
+    "LSE": Exchange.LSE,
+    "IOB": Exchange.LSE,
+    "GER": Exchange.XETRA,
+    "DEX": Exchange.XETRA,
+    "ETR": Exchange.XETRA,
+    "TYO": Exchange.TSE,
+    "OSA": Exchange.TSE,
+    "NSI": Exchange.NSE,
+    "BOM": Exchange.BSE,
+    "SAO": Exchange.B3,
+    "MEX": Exchange.BMV,
+}
+
+# Ticker suffix → (exchange, market, default_currency)
+_SUFFIX_MAP: dict[str, tuple] = {
+    ".L":  (Exchange.LSE,   Market.UK, Currency.GBP),
+    ".DE": (Exchange.XETRA, Market.DE, Currency.EUR),
+    ".T":  (Exchange.TSE,   Market.JP, Currency.JPY),
+    ".NS": (Exchange.NSE,   Market.IN, Currency.INR),
+    ".BO": (Exchange.BSE,   Market.IN, Currency.INR),
+    ".SA": (Exchange.B3,    Market.BR, Currency.BRL),
+    ".MX": (Exchange.BMV,   Market.MX, Currency.MXN),
+}
+
+_CURRENCY_MAP: dict[str, Currency] = {
+    "USD": Currency.USD,
+    "GBP": Currency.GBP,
+    "EUR": Currency.EUR,
+    "JPY": Currency.JPY,
+    "INR": Currency.INR,
+    "BRL": Currency.BRL,
+    "MXN": Currency.MXN,
+}
+
+_CURRENCY_TO_MARKET: dict[Currency, Market] = {
+    Currency.USD: Market.US,
+    Currency.GBP: Market.UK,
+    Currency.EUR: Market.DE,
+    Currency.JPY: Market.JP,
+    Currency.INR: Market.IN,
+    Currency.BRL: Market.BR,
+    Currency.MXN: Market.MX,
 }
 
 _FILING_TYPE_MAP = {
@@ -58,15 +101,18 @@ def _row(df: pd.DataFrame, key: str, col) -> Optional[float]:
 
 def _build_income_statement(is_df: pd.DataFrame, col) -> IncomeStatement:
     r = lambda k: _row(is_df, k, col)
-    # Derive cost_of_revenue if not directly present
     cost = r("CostOfRevenue") or r("ReconciledCostOfRevenue")
+    # Small IFRS synonym fallback — revenue, operating income, net income only
+    revenue         = r("TotalRevenue")    or r("Revenue")         or r("NetRevenue")
+    operating_income = r("OperatingIncome") or r("OperatingProfit") or r("EBIT")
+    net_income      = r("NetIncome")       or r("NetIncomeLoss")   or r("ProfitLoss")
     return IncomeStatement(
-        revenue=r("TotalRevenue"),
+        revenue=revenue,
         cost_of_revenue=cost,
         gross_profit=r("GrossProfit"),
-        operating_income=r("OperatingIncome"),
+        operating_income=operating_income,
         ebitda=r("EBITDA"),
-        net_income=r("NetIncome"),
+        net_income=net_income,
         eps_basic=r("BasicEPS"),
         eps_diluted=r("DilutedEPS"),
         shares_outstanding_basic=r("BasicAverageShares"),
@@ -137,16 +183,42 @@ class YFinanceAdapter(DataAdapter):
         name = info.get("longName") or info.get("shortName")
         if not name:
             raise ValueError(f"Ticker not found in yfinance: {ticker}")
-        exchange_code = info.get("exchange", "")
-        exchange = _EXCHANGE_MAP.get(exchange_code, Exchange.NYSE)
+
+        upper = ticker.upper()
         currency_str = info.get("currency", "USD")
-        currency = Currency.USD if currency_str == "USD" else Currency.USD
+        currency = _CURRENCY_MAP.get(currency_str, Currency.USD)
+
+        # Suffix-based resolution is most reliable for global tickers
+        resolved = None
+        for suffix, (sx_exchange, sx_market, sx_currency) in _SUFFIX_MAP.items():
+            if upper.endswith(suffix):
+                resolved = (sx_exchange, sx_market, currency)  # prefer info currency
+                break
+
+        if resolved:
+            exchange, market, currency = resolved
+        else:
+            # US ticker path: map exchange code; infer market from currency
+            exchange_code = info.get("exchange", "")
+            exchange = _EXCHANGE_MAP.get(exchange_code, Exchange.OTHER)
+            market = _CURRENCY_TO_MARKET.get(currency, Market.US)
+
+        quote_type = info.get("quoteType", "")
+        asset_type_map = {
+            "CRYPTOCURRENCY": "crypto",
+            "CURRENCY": "forex",
+            "FUTURE": "commodity",
+            "INDEX": "index",
+        }
+        asset_type = asset_type_map.get(quote_type, "equity")
+
         return CompanyIdentity(
-            ticker=ticker.upper(),
+            ticker=upper,
             name=name,
-            market=Market.US,
+            market=market,
             exchange=exchange,
             currency=currency,
+            asset_type=asset_type,
         )
 
     async def get_fundamentals(
@@ -213,7 +285,7 @@ class YFinanceAdapter(DataAdapter):
                     fiscal_year=fiscal_year,
                     fiscal_quarter=fiscal_quarter,
                     period_end_date=col_date,
-                    currency=Currency.USD,
+                    currency=company.currency,
                     income_statement=is_stmt,
                     balance_sheet=bs_stmt,
                     cash_flow=cf_stmt,
@@ -258,7 +330,7 @@ class YFinanceAdapter(DataAdapter):
                 fiscal_year=now.year,
                 fiscal_quarter=None,
                 period_end_date=now.date(),
-                currency=Currency.USD,
+                currency=company.currency,
                 income_statement=is_stmt,
                 balance_sheet=bs_stmt,
                 cash_flow=cf_stmt,

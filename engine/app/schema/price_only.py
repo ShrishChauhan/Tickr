@@ -1,0 +1,30 @@
+from pydantic import BaseModel
+from typing import Optional
+from datetime import date
+
+
+class OHLCBar(BaseModel):
+    date: date
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: Optional[float] = None
+
+
+class PriceOnlyData(BaseModel):
+    ticker: str
+    name: str
+    asset_type: str
+    currency: str
+    current_price: Optional[float] = None
+    change_24h: Optional[float] = None
+    change_24h_pct: Optional[float] = None
+    high_52w: Optional[float] = None
+    low_52w: Optional[float] = None
+    market_cap: Optional[float] = None
+    volume_24h: Optional[float] = None
+    circulating_supply: Optional[float] = None
+    contract_month: Optional[str] = None
+    ohlc: list[OHLCBar] = []
+    fetched_at: str
