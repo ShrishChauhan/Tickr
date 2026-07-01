@@ -1,0 +1,27 @@
+.wrap {
+  /* inline — parent <p> controls centering */
+}
+
+.cursor {
+  animation: cursorBlink 0.9s step-end infinite;
+}
+
+.cursorFade {
+  animation: none;
+  opacity: 0;
+  transition: opacity 0.5s ease 0.2s;
+}
+
+.cursorGone {
+  opacity: 0; /* no transition — instant snap */
+}
+
+@keyframes cursorBlink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}

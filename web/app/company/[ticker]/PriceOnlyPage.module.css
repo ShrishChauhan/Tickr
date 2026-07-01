@@ -1,0 +1,160 @@
+.priceDisplay {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.currentPrice {
+  font-family: var(--font-data);
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+  font-weight: 400;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
+}
+
+.change {
+  font-family: var(--font-data);
+  font-size: 1rem;
+}
+
+.changePositive {
+  color: var(--color-data-green);
+}
+
+.changeNegative {
+  color: var(--color-data-red);
+}
+
+/* Chart card */
+.chartCard {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.chartHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chartTitle {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.timeframeBar {
+  display: flex;
+  gap: 4px;
+}
+
+.tfBtn {
+  font-family: var(--font-data);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.tfBtn:hover {
+  color: var(--color-text-primary);
+}
+
+.tfBtnActive {
+  color: var(--color-neon-green);
+  border-color: rgba(43, 255, 136, 0.3);
+}
+
+.chartWrap {
+  width: 100%;
+  height: 260px;
+}
+
+/* Metadata grid */
+.metaGrid {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 20px 32px;
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.statLabel {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.statValue {
+  font-family: var(--font-data);
+  font-size: 0.9375rem;
+  color: var(--color-text-primary);
+}
+
+/* No-fundamentals card */
+.noFundamentals {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 18px 24px;
+}
+
+.noFundamentalsText {
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+/* Skeleton for price-only loading */
+.skeletonChart {
+  width: 100%;
+  height: 320px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+@media (max-width: 640px) {
+  .chartCard {
+    padding: 16px;
+  }
+
+  .metaGrid {
+    padding: 16px;
+    gap: 16px 20px;
+  }
+}

@@ -33,12 +33,11 @@ export default function TopNav({ instant }: TopNavProps) {
       </span>
 
       <div className={styles.links}>
-        {/* Links wire up in Phase 3b */}
-        <a href="#" className={styles.link}>
+        <a href="/" className={styles.link}>
           Search
         </a>
-        <a href="#" className={styles.link}>
-          About
+        <a href="/compare" className={styles.link}>
+          Compare
         </a>
       </div>
     </motion.nav>

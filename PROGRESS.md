@@ -284,3 +284,104 @@
 - **Framer Motion skip animation not working with `transition`-only prop change:** First skip implementation changed only the `transition` prop (setting `duration: 0`) while keeping the same `animate` target. Framer Motion does not re-trigger an animation when only `transition` changes — the animation state machine only responds to changes in the `animate` target values. So elements already waiting on a `delay: 6.0s` timer stayed invisible. Fixed by switching to imperative `useAnimation` controls for every animated element: on `instant=false`, `controls.start({ opacity: 1, transition: { delay: N } })`; on `instant=true`, `controls.set({ opacity: 1 })`. The `set()` call is synchronous and cancels any pending animation, immediately snapping elements to their final state.
 
 - **Fixed-position nav inside opacity-animating div:** First TopNav implementation wrapped the `<nav>` in a `<motion.div>` that faded `opacity: 0→1`. A CSS stacking context is created whenever an element has `opacity < 1`, which makes any `position: fixed` child of that element behave as `position: absolute` relative to the stacking context ancestor instead of the viewport. The nav was painting at the top of the hero div, not the top of the screen. Fixed by moving the `motion` animation directly onto the `<motion.nav>` element itself (then replaced with `useAnimation` controls as part of the above fix). No wrapper div needed.
+
+---
+
+## Session 7 — 2026-06-27 — Phase 4a: Global equity onboarding
+
+### Done
+
+- **Expanded schema enums (`engine/app/schema/company.py`):** `Market` extended to US/UK/DE/JP/IN/BR/MX. `Exchange` extended to include LSE, XETRA, TSE, NSE, BSE, B3, BMV, and an `OTHER` fallback. `Currency` extended to USD/GBP/EUR/JPY/INR/BRL/MXN.
+
+- **Fixed three hardcoded bugs in yfinance adapter (`engine/app/adapters/yfinance.py`):**
+  1. Line 143 (original): `currency = Currency.USD if currency_str == "USD" else Currency.USD` — always returned USD regardless of input. Fixed by routing through `_CURRENCY_MAP`.
+  2. `market=Market.US` hardcoded in `_sync_get_company`. Fixed to infer from suffix/currency.
+  3. `currency=Currency.USD` hardcoded in `_sync_get_fundamentals` (annual and TTM paths). Fixed to use `company.currency`.
+
+- **Added suffix-based global ticker resolution:** `_SUFFIX_MAP` maps `.L`/`.DE`/`.T`/`.NS`/`.BO`/`.SA`/`.MX` to (Exchange, Market, default_currency). For global tickers, suffix resolution runs first; `info["currency"]` from yfinance overrides the suffix default currency (important: Shell / SHEL.L reports in USD despite LSE listing — engine correctly returns USD). US tickers fall through to the existing exchange-code map.
+
+- **Extended `_EXCHANGE_MAP`** with global yfinance exchange codes (LSE, IOB, GER, DEX, ETR, TYO, OSA, NSI, BOM, SAO, MEX) as a defense-in-depth fallback behind the suffix map. Default changed from `Exchange.NYSE` to `Exchange.OTHER` for truly unknown codes.
+
+- **IFRS synonym fallback (small) in `_build_income_statement`:** Three highest-value fields only:
+  - `revenue`: `TotalRevenue` → `Revenue` → `NetRevenue`
+  - `operating_income`: `OperatingIncome` → `OperatingProfit` → `EBIT`
+  - `net_income`: `NetIncome` → `NetIncomeLoss` → `ProfitLoss`
+
+- **SearchBar extended to 12 chars** (`web/components/hero/SearchBar.tsx`): regex changed to `^[A-Z0-9.]{1,12}$`, `maxLength` to 12. Required for `RELIANCE.NS` (11 chars) and `GFNORTEO.MX` (11 chars).
+
+- **Currency-aware fundamentals table** (`web/components/company/FundamentalsTable.tsx`): `fmtDollar` and `fmtEps` now take a currency symbol parameter. `fmt` defined inside the component body as a closure over `currSym = getCurrencySymbol(periods[0].currency)`. Symbol map: USD→`$`, GBP→`£`, EUR→`€`, JPY→`¥`, INR→`₹`, BRL→`R$`, MXN→`MX$`. Japanese stocks now show `¥`, Indian stocks `₹`, etc.
+
+- **Created `engine/tests/verify_global_fundamentals.py`** — diagnostic (not a test suite entry): fetches one year of annual fundamentals for AAPL + SHEL.L + SAP.DE + 7203.T + RELIANCE.NS + PETR4.SA + WALMEX.MX through the engine's normalization path, prints populated vs null fields per ticker, prints a gap analysis vs AAPL baseline.
+
+- **Diagnostic output confirmed:**
+  - AAPL: 18/18 fields populated. Baseline clean.
+  - SHEL.L: 18/18. Currency=USD (Shell reports in USD — info["currency"] correctly overrides suffix default GBP).
+  - SAP.DE: 18/18. Currency=EUR, Exchange=XETRA.
+  - 7203.T: 18/18. Currency=JPY, Exchange=TSE.
+  - RELIANCE.NS: 17/18. Only gap: `eps_diluted` (expected for NSE listings — yfinance doesn't provide it).
+  - PETR4.SA: 18/18. Currency=BRL, Exchange=B3.
+  - WALMEX.MX: 18/18. Currency=MXN, Exchange=BMV.
+
+### Known limitation (not fixed — Phase 4c)
+Simple search requires exact suffixed ticker (`7203.T` for Toyota, `RELIANCE.NS` for Reliance). This is power-user-unfriendly. Name-based tagged search is Phase 4c.
+
+### Next
+Phase 4b (price-only assets: crypto/forex/commodities) or Phase 4c (tagged search with exchange suffix autocomplete).
+
+---
+
+## Session 6 (3a.2) — 2026-06-26 — Hero matched to prototype
+
+### Done
+- **Typewriter tagline:** Added `Typewriter.tsx` + `Typewriter.module.css`. The component types "AI-Powered Equity Research Terminal" at 50 ms/char starting at `startDelay=6150 ms` (aligned with the tagline fade-in). Cursor is a `<span>|</span>` with opacity-only blink (never removed from DOM) so its width is always counted — no centering jank. When `instant=true`, shows full text immediately with cursor hidden. After typing completes, cursor fades out over 0.5 s.
+- **Font size bump:** `.tagline` in `HeroSection.module.css` changed from `clamp(0.75rem, 2.2vw, 1rem)` (12–16 px) to `clamp(0.9375rem, 2.2vw, 1.0625rem)` (15–17 px). `letter-spacing: 0.14em` scales proportionally.
+- **Text contrast lift:** `--color-text-primary` in `globals.css` bumped from `#f0f4f8` to `#f5f7fa` (brighter near-white, not pure white).
+- **`prefers-reduced-motion` support:** One-shot `useEffect` in `HeroSection.tsx` checks the media query on mount and calls `setInstant(true)` immediately — all animations skip straight to final state.
+- **Build:** `npm run build` passes cleanly, TypeScript clean, no ESLint errors.
+- **Visual verification:** Playwright screenshots confirm: mid-animation (TickerLine drawing + logo visible at 3.5 s); final state (all elements visible — logo, tagline, search bar, movers row — TickerLine dimmed, TopNav with solid background). DOM content confirmed `"AI-Powered Equity Research Terminal|"` in tagline, `"TCKRSearchAbout"` in nav.
+
+### Next session (3b.1 / 3b.2)
+Make search functional → route to `/company/[ticker]` → scaffold company page → first engine fetch.
+
+Specifically:
+1. Wire SearchBar to an actual `<input>` and handle submit
+2. Add Next.js App Router route `/company/[ticker]/page.tsx`
+3. Scaffold company page layout (header, fundamentals section, filings section, AI analysis panel — all empty initially)
+4. First engine fetch: `GET /api/v1/companies/{ticker}` → display identity card
+
+---
+
+## Session 8 — 2026-07-01 — Phase 4d-1: Freshness Display + Comparison Page
+
+### Done
+
+- **Verified field names before building:** Confirmed `NormalizedFundamentals.fetched_at` exists (Python `datetime`, TypeScript `string`) on both the schema and TS interface. Confirmed all radar/table ratio keys (`gross_margin`, `operating_margin`, `net_margin`, `roe`, `roa`, `pe_ratio`, `debt_to_equity`) match the actual `Ratios` model and `derive_ratios` output exactly. Noted the critical decimal convention: `derive_ratios` stores margin/return values as decimals (0.44 = 44%) — `fmtPct` correctly multiplies by 100.
+
+- **Extracted shared formatting utilities to `web/lib/format.ts`:** `relativeTime`, `getCurrencySymbol`, `fmtDollar`, `fmtEps`, `fmtPct`, `fmtMultiple` — previously defined locally in `FundamentalsTable.tsx`. Updated `FundamentalsTable.tsx` to import from `@/lib/format` instead. No behavioral change.
+
+- **Data freshness — price-only pages (`PriceOnlyPage.tsx`):** Added `Updated {relativeTime(data.fetched_at)}` below the price/change display (inside the header card). Uses `fetched_at` already present on `PriceOnlyData`. Styled via `.freshness` in `page.module.css`: JetBrains Mono, 11px, `--color-text-muted`.
+
+- **Data freshness — equity pages (`EquityPage.tsx`):** Added `Fundamentals as of FY{year} · Updated {relative}` inside the identity card, below the meta row. Period label derived from `fundamentals[0].fiscal_year` (falls back to `period_end_date.slice(0,4)` if null). `relativeTime` imported from `@/lib/format`.
+
+- **TopNav:** Wired placeholder links — "Search" → `/`, "About" replaced with "Compare" → `/compare`. Removed the `{/* Links wire up in Phase 3b */}` comment.
+
+- **New route `/compare` (`web/app/compare/page.tsx`):** Full comparison page, `'use client'`.
+  - Ticker input with 300ms-debounced typeahead (`fetchSearch`) + dropdown; chips for each added ticker with colored dot matching the radar series color; pending chips for in-flight fetches.
+  - On add: cap check (5 including in-flight), duplicate check, `fetchCompany` to verify `asset_type === 'equity'` (non-equities shown a self-clearing warn note and rejected), `fetchFundamentals(ticker, 'annual', 3)`. On error: self-clearing error note, ticker not added.
+  - Empty state: "Add at least 2 tickers to compare" until 2 tickers are loaded.
+  - **Radar chart** (recharts `RadarChart`): 5 metrics — Gross Margin, Op. Margin, Net Margin, ROE, ROA. Per-metric normalization: highest raw value across set = 100, others scaled proportionally (normalization on raw decimals preserves proportions). Custom tooltip shows real percentages (raw × 100), not the normalized 0–100 score. Colors: `['#2BFF88', '#6366F1', '#F59E0B', '#22D3EE', '#A78BFA']` (red excluded — reserved for negative). Fill opacity 0.15 per polygon.
+  - **Comparison table**: 5 sections (Income Statement, Margins, Cash Flow, Balance Sheet, Returns & Leverage). Transposed layout — columns = tickers, rows = metrics. Per-column currency symbol via `getCurrencySymbol`. Best-per-row highlight for `higherIsBetter` metrics: faint green background (`rgba(43,255,136,0.08)`) on the winning cell. Multi-currency caveat note if companies report in different currencies. Missing values → em-dash.
+
+- **`npm run build` passes clean.** TypeScript zero errors. Route shows as `○ (Static)` in build output.
+
+### Verification checklist (run after starting servers)
+1. `curl http://localhost:8000/api/v1/assets/GC=F/price` → JSON with `contract_month`
+2. `/company/BTC-USD` → "Updated X min ago" under price
+3. `/company/AAPL` → "Fundamentals as of FY2024 · Updated X ago" in identity card
+4. `/compare`: add AAPL + MSFT → radar renders (2 polygons), table shows 2 columns
+5. Radar tooltip → real % values (e.g. "43.5%"), not 0–100
+6. Add BTC-USD → reject note, not added
+7. Add 6th ticker → blocked
+8. Remove ticker → chart and table update
+9. Best-per-row: winner has faint green cell bg
+10. Nav "Compare" link routes to `/compare`

@@ -1,0 +1,120 @@
+.card {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sectionLabel {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+.meta {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* Loading */
+.loadingLabel {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.skeletonWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skeletonLine {
+  height: 14px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 4px;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.w90 { width: 90%; }
+.w85 { width: 85%; }
+.w80 { width: 80%; }
+.w75 { width: 75%; }
+.w60 { width: 60%; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+/* Error */
+.errorMsg {
+  font-family: var(--font-ui);
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Success */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.para {
+  font-family: var(--font-ui);
+  font-size: 0.9375rem;
+  color: var(--color-text-primary);
+  line-height: 1.65;
+  margin: 0;
+}
+
+.disclaimer {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+  line-height: 1.5;
+  margin: 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-border);
+}

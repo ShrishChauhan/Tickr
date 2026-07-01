@@ -1,0 +1,84 @@
+.wrapper {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 560px;
+}
+
+/* Column headers */
+.headerCell {
+  font-family: var(--font-data);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  text-align: right;
+  padding: 10px 16px 9px;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.labelHeader {
+  text-align: left;
+  min-width: 148px;
+  width: 148px;
+}
+
+.sectionCell {
+  font-family: var(--font-ui);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  padding: 10px 16px 3px;
+  border-top: 1px solid var(--color-border);
+}
+
+/* First section has no top border — already separated by header */
+thead + tbody .sectionRow:first-child .sectionCell {
+  border-top: none;
+  padding-top: 8px;
+}
+
+/* Data rows */
+.dataRow:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.labelCell {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  padding: 4px 16px;
+  white-space: nowrap;
+}
+
+.valueCell {
+  font-family: var(--font-data);
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+  text-align: right;
+  padding: 4px 16px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Color states */
+.positive {
+  color: var(--color-data-green);
+}
+
+.negative {
+  color: var(--color-data-red);
+}
+
+.missing {
+  color: rgba(107, 114, 128, 0.5);
+}
