@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   RadarChart,
   Radar,
@@ -91,6 +92,15 @@ const TABLE_SECTIONS: TableSection[] = [
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ComparePage() {
+  return (
+    <Suspense fallback={null}>
+      <CompareContent />
+    </Suspense>
+  );
+}
+
+function CompareContent() {
+  const searchParams = useSearchParams();
   const [tickers, setTickers]     = useState<string[]>([]);
   const [dataMap, setDataMap]     = useState<Record<string, NormalizedFundamentals[]>>({});
   const [loadingSet, setLoadingSet] = useState<Set<string>>(new Set());
@@ -122,6 +132,17 @@ export default function ComparePage() {
     }
     document.addEventListener('mousedown', onMouseDown);
     return () => document.removeEventListener('mousedown', onMouseDown);
+  }, []);
+
+  // Pre-populate from ?tickers= (e.g. deep-linked from the screener's Compare action)
+  useEffect(() => {
+    const param = searchParams.get('tickers');
+    if (!param) return;
+    for (const t of param.split(',').map(s => s.trim()).filter(Boolean)) {
+      addTicker(t);
+    }
+    // Only run once on mount — addTicker manages its own state after that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function showNote(text: string, kind: 'error' | 'warn') {

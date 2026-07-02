@@ -7,6 +7,7 @@ import TickerLine from "./TickerLine";
 import TopNav from "@/components/nav/TopNav";
 import SearchBar from "./SearchBar";
 import MoversRow from "./MoversRow";
+import Typewriter from "./Typewriter";
 import styles from "./HeroSection.module.css";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -34,6 +35,12 @@ export default function HeroSection() {
       moversCtrl.start({ opacity: 1, y: 0, transition: { duration: 0.55, delay: 6.35, ease: EASE } });
     }
   }, [instant, logoCtrl, taglineCtrl, searchCtrl, moversCtrl]);
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setInstant(true);
+    }
+  }, []);
 
   useEffect(() => {
     const skip = () => setInstant(true);
@@ -64,7 +71,12 @@ export default function HeroSection() {
           animate={taglineCtrl}
           initial={{ opacity: 0, y: 18 }}
         >
-          AI-Powered Equity Research Terminal
+          <Typewriter
+            text="AI-Powered Equity Research Terminal"
+            charDelay={50}
+            startDelay={6150}
+            instant={instant}
+          />
         </motion.p>
 
         <motion.div animate={searchCtrl} initial={{ opacity: 0, y: 18 }}>

@@ -110,19 +110,20 @@ class GroqAnalysisEngine(AnalysisEngine):
         # Key ratios from most recent period only (they are TTM-based)
         recent = sorted_funds[-1]
         rt = recent.ratios
+        # yfinance returns margin/return ratios as decimals (0–1), not percentages — multiply by 100
         ratio_parts = []
-        for label, val, fmt in [
-            ("P/E",         rt.pe_ratio,       "{:.1f}x"),
-            ("P/S",         rt.ps_ratio,       "{:.1f}x"),
-            ("EV/EBITDA",   rt.ev_ebitda,      "{:.1f}x"),
-            ("Gross Margin",rt.gross_margin,   "{:.1f}%"),
-            ("Op. Margin",  rt.operating_margin,"{:.1f}%"),
-            ("Net Margin",  rt.net_margin,     "{:.1f}%"),
-            ("ROE",         rt.roe,            "{:.1f}%"),
-            ("Debt/Equity", rt.debt_to_equity, "{:.2f}"),
+        for label, val, fmt, scale in [
+            ("P/E",         rt.pe_ratio,        "{:.1f}x",  1),
+            ("P/S",         rt.ps_ratio,        "{:.1f}x",  1),
+            ("EV/EBITDA",   rt.ev_ebitda,       "{:.1f}x",  1),
+            ("Gross Margin",rt.gross_margin,    "{:.1f}%",  100),
+            ("Op. Margin",  rt.operating_margin,"{:.1f}%",  100),
+            ("Net Margin",  rt.net_margin,      "{:.1f}%",  100),
+            ("ROE",         rt.roe,             "{:.1f}%",  100),
+            ("Debt/Equity", rt.debt_to_equity,  "{:.2f}",   1),
         ]:
             if val is not None:
-                ratio_parts.append(f"{label}: {fmt.format(val)}")
+                ratio_parts.append(f"{label}: {fmt.format(val * scale)}")
         if ratio_parts:
             lines.append(f"KEY RATIOS (most recent, as of {recent.period_end_date}):")
             lines.append("  " + " | ".join(ratio_parts))
@@ -147,7 +148,7 @@ class GroqAnalysisEngine(AnalysisEngine):
         lines.append("2. Profitability Analysis — margin trends and earnings quality")
         lines.append("3. Balance Sheet & Leverage — debt levels, cash position, financial strength")
         lines.append("4. Cash Flow Analysis — operating and free cash flow quality")
-        lines.append("5. Key Observations — notable patterns, strengths, or concerns")
+        lines.append("5. Investment Considerations: identify exactly one specific financial strength and one specific financial risk clearly visible in this data, each supported by the exact figures from the table above. Do not repeat figures already cited in sections 1–4. Do not add generic statements about financial health.")
         lines.append("")
         lines.append("Rules:")
         lines.append("- Cite specific figures for every claim (e.g. 'revenue grew from $X to $Y').")

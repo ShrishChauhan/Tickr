@@ -154,6 +154,7 @@ def _build_ratios_from_info(info: dict) -> Ratios:
         pb_ratio=g("priceToBook"),
         ev_ebitda=g("enterpriseToEbitda"),
         ev_revenue=g("enterpriseToRevenue"),
+        market_cap=g("marketCap"),
         gross_margin=g("grossMargins"),
         operating_margin=g("operatingMargins"),
         net_margin=g("profitMargins"),

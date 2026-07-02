@@ -6,7 +6,9 @@
 #   analysis:{TICKER}:{source}:{period}:{limit}
 #   price:{TICKER}
 import asyncio
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Optional
 
 import yfinance as yf
@@ -25,6 +27,7 @@ from ..cache.ttl_config import (
 )
 from ..config import settings
 from ..schema import CompanyIdentity, NormalizedFundamentals, FilingReference, AnalysisResult, PriceOnlyData, OHLCBar
+from ..schema.company import Currency, Exchange, Market
 from ..schema.fundamentals import Period
 from ..schema.filings import FilingType
 from ..utils.ratios import derive_ratios
@@ -37,6 +40,14 @@ _adapters = {
 }
 
 _cache = PostgresCacheBackend()
+
+_UNIVERSES_DIR = Path(__file__).resolve().parent.parent / "data" / "universes"
+_UNIVERSES = {
+    "dow30": json.loads((_UNIVERSES_DIR / "dow30.json").read_text(encoding="utf-8")),
+    "nifty50": json.loads((_UNIVERSES_DIR / "nifty50.json").read_text(encoding="utf-8")),
+    "nasdaq100": json.loads((_UNIVERSES_DIR / "nasdaq100.json").read_text(encoding="utf-8")),
+    "sp500": json.loads((_UNIVERSES_DIR / "sp500.json").read_text(encoding="utf-8")),
+}
 
 _analysis_engine: Optional[AnalysisEngine] = None
 
@@ -61,6 +72,62 @@ def _get_analysis_engine() -> Optional[AnalysisEngine]:
     return _analysis_engine
 
 
+_NON_EQUITY_QUOTE_TYPES = {"FUTURE", "CRYPTOCURRENCY", "CURRENCY", "INDEX", "ETF", "MUTUALFUND"}
+
+_ASSET_TYPE_MAP = {
+    "EQUITY":         "equity",
+    "CRYPTOCURRENCY": "crypto",
+    "CURRENCY":       "forex",
+    "FUTURE":         "commodity",
+    "INDEX":          "index",
+    "ETF":            "etf",
+    "MUTUALFUND":     "fund",
+}
+
+_CURRENCY_TO_MARKET = {
+    "GBP": Market.UK,
+    "EUR": Market.DE,
+    "JPY": Market.JP,
+    "INR": Market.IN,
+    "BRL": Market.BR,
+    "MXN": Market.MX,
+}
+
+
+def _build_non_equity_identity(ticker: str) -> Optional[CompanyIdentity]:
+    info = yf.Ticker(ticker).info
+    quote_type = (info.get("quoteType") or "").upper()
+    if quote_type not in _NON_EQUITY_QUOTE_TYPES:
+        return None
+
+    name = info.get("shortName") or info.get("longName") or ticker
+
+    raw_exchange = info.get("exchange") or ""
+    exchange_display = EXCHANGE_DISPLAY.get(raw_exchange, raw_exchange)
+    try:
+        exchange = Exchange(exchange_display)
+    except ValueError:
+        exchange = Exchange.OTHER
+
+    currency_str = (info.get("currency") or "USD").upper()
+    try:
+        currency = Currency(currency_str)
+    except ValueError:
+        currency = Currency.USD
+
+    market = _CURRENCY_TO_MARKET.get(currency.value, Market.US)
+
+    return CompanyIdentity(
+        ticker=ticker,
+        name=name,
+        exchange=exchange,
+        market=market,
+        currency=currency,
+        asset_type=_ASSET_TYPE_MAP.get(quote_type, "equity"),
+        cik=None,
+    )
+
+
 @router.get("/companies/{ticker}", response_model=CompanyIdentity)
 async def get_company(
     ticker: str,
@@ -76,8 +143,19 @@ async def get_company(
 
     try:
         result = await adapter.get_company(ticker)
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as original_exc:
+        loop = asyncio.get_event_loop()
+        try:
+            identity = await loop.run_in_executor(None, _build_non_equity_identity, ticker)
+        except Exception:
+            identity = None
+
+        if identity is None:
+            raise HTTPException(status_code=404, detail=str(original_exc))
+
+        await _cache.set(cache_key, identity.model_dump(mode="json"), COMPANY_INFO_TTL_SECONDS,
+                         data_type="company", ticker=ticker, source=source)
+        return identity
 
     await _cache.set(cache_key, result.model_dump(mode="json"), COMPANY_INFO_TTL_SECONDS,
                      data_type="company", ticker=ticker, source=source)
@@ -227,28 +305,122 @@ async def analyze_company(
     )
 
 
-# Futures month code → human-readable month abbreviation
-_FUTURES_MONTH = {
+EXCHANGE_DISPLAY = {
+    "NMS": "NASDAQ", "NGM": "NASDAQ", "NCM": "NASDAQ",
+    "NYQ": "NYSE",   "ASE": "AMEX",
+    "LSE": "LSE",    "IOB": "LSE",
+    "GER": "XETRA",  "DEX": "XETRA", "ETR": "XETRA",
+    "TYO": "TSE",    "OSA": "TSE",
+    "NSI": "NSE",    "BSE": "BSE",    "BOM": "BSE",
+    "SAO": "B3",     "MEX": "BMV",
+    "CCC": "Crypto", "CCY": "Forex",
+}
+
+_SEARCH_TTL_SECONDS = 3600
+
+
+@router.get("/search")
+async def search_assets(q: str = Query(..., min_length=1, max_length=50)):
+    q = q.strip()
+    if not q:
+        return []
+
+    cache_key = f"search:{q.lower()}"
+    raw = await _cache.get(cache_key)
+    if raw is not None:
+        return raw
+
+    loop = asyncio.get_event_loop()
+
+    def _sync_search():
+        try:
+            results = yf.Search(q, max_results=8).quotes
+        except Exception:
+            return []
+
+        out = []
+        for r in results:
+            symbol = r.get("symbol") or r.get("ticker")
+            if not symbol:
+                continue
+            name = (r.get("shortname") or r.get("longname")
+                    or r.get("shortName") or r.get("longName") or symbol)
+            quote_type = (r.get("quoteType") or "").upper()
+            asset_type_map = {
+                "EQUITY":         "equity",
+                "CRYPTOCURRENCY": "crypto",
+                "CURRENCY":       "forex",
+                "FUTURE":         "commodity",
+                "INDEX":          "index",
+                "ETF":            "etf",
+                "MUTUALFUND":     "fund",
+            }
+            asset_type = asset_type_map.get(quote_type, "equity")
+            exchange = r.get("exchange") or r.get("exchDisp") or ""
+            exchange = EXCHANGE_DISPLAY.get(exchange, exchange)
+            sector = r.get("sector") or r.get("industry") or None
+
+            out.append({
+                "ticker":     symbol,
+                "name":       name,
+                "exchange":   exchange,
+                "asset_type": asset_type,
+                "sector":     sector,
+            })
+        return out
+
+    results = await loop.run_in_executor(None, _sync_search)
+    if results:
+        await _cache.set(cache_key, results, _SEARCH_TTL_SECONDS,
+                         data_type="search", ticker=q, source="yfinance")
+    return results
+
+
+_FUTURES_MONTH_CODE = {
     "F": "Jan", "G": "Feb", "H": "Mar", "J": "Apr",
     "K": "May", "M": "Jun", "N": "Jul", "Q": "Aug",
     "U": "Sep", "V": "Oct", "X": "Nov", "Z": "Dec",
 }
 
+_SHORT_MONTHS = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
 
-def _parse_contract_month(contract_symbol: Optional[str], base_ticker: str) -> Optional[str]:
-    if not contract_symbol:
-        return None
-    # Strip the base ticker prefix (e.g. "GC" from "GCQ26") to get month+year suffix
-    suffix = contract_symbol[len(base_ticker.rstrip("=F")):]
-    if len(suffix) >= 3:
-        month_code = suffix[0].upper()
-        year_digits = suffix[1:]
-        month = _FUTURES_MONTH.get(month_code)
-        if month and year_digits.isdigit():
-            year = int(year_digits)
-            full_year = 2000 + year if year < 100 else year
-            return f"{month} {full_year}"
-    return contract_symbol
+
+def _derive_contract_month(info: dict, base_ticker: str) -> Optional[str]:
+    import re
+    # 1. shortName often contains "Gold Aug 26" — extract "Mon YY/YYYY" pattern
+    short_name = info.get("shortName") or ""
+    m = re.search(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})', short_name)
+    if m:
+        month, yr = m.group(1), m.group(2)
+        year = int(yr)
+        if year < 100:
+            year += 2000
+        return f"{month} {year}"
+
+    # 2. underlyingSymbol like "GCQ26.CMX" — parse month code
+    underlying = info.get("underlyingSymbol") or ""
+    root = base_ticker.rstrip("=F").upper()
+    if underlying.upper().startswith(root):
+        suffix = underlying[len(root):]
+        suffix = suffix.split(".")[0]  # drop exchange suffix
+        if len(suffix) >= 2:
+            month_code = suffix[0].upper()
+            year_digits = suffix[1:]
+            month = _FUTURES_MONTH_CODE.get(month_code)
+            if month and year_digits.isdigit():
+                year = int(year_digits)
+                if year < 100:
+                    year += 2000
+                return f"{month} {year}"
+
+    # 3. expireDate as Unix timestamp
+    expire = info.get("expireDate")
+    if expire and isinstance(expire, (int, float)) and expire > 0:
+        from datetime import datetime, timezone
+        dt = datetime.fromtimestamp(expire, tz=timezone.utc)
+        return dt.strftime("%b %Y")
+
+    return None
 
 
 def _sync_fetch_price_data(ticker: str) -> PriceOnlyData:
@@ -288,7 +460,7 @@ def _sync_fetch_price_data(ticker: str) -> PriceOnlyData:
 
     contract_month = None
     if asset_type == "commodity":
-        contract_month = _parse_contract_month(info.get("contractSymbol"), ticker)
+        contract_month = _derive_contract_month(info, ticker)
 
     hist = t.history(period="1y", interval="1d")
     ohlc_bars: list[OHLCBar] = []
@@ -350,3 +522,14 @@ async def get_asset_price(ticker: str):
         source="yfinance",
     )
     return result
+
+
+@router.get("/screener/universes/{key}")
+async def get_screener_universe(key: str):
+    universe = _UNIVERSES.get(key)
+    if universe is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown universe '{key}'. Valid: {', '.join(_UNIVERSES.keys())}",
+        )
+    return universe

@@ -52,6 +52,7 @@ class Ratios(BaseModel):
     pb_ratio: Optional[float] = None
     ev_ebitda: Optional[float] = None
     ev_revenue: Optional[float] = None
+    market_cap: Optional[float] = None
     # Profitability
     gross_margin: Optional[float] = None
     operating_margin: Optional[float] = None

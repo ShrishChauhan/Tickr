@@ -48,6 +48,7 @@ export interface Ratios {
   pb_ratio: number | null;
   ev_ebitda: number | null;
   ev_revenue: number | null;
+  market_cap: number | null;
   gross_margin: number | null;
   operating_margin: number | null;
   net_margin: number | null;
@@ -94,6 +95,11 @@ export interface SearchResult {
   exchange: string;
   asset_type: string;
   sector: string | null;
+}
+
+export interface UniverseConstituent {
+  ticker: string;
+  name: string;
 }
 
 export async function fetchSearch(query: string): Promise<SearchResult[]> {
@@ -198,6 +204,17 @@ export async function fetchPriceOnly(ticker: string): Promise<PriceOnlyData> {
     throw new ApiError(res.status, body.detail ?? res.statusText);
   }
   return res.json() as Promise<PriceOnlyData>;
+}
+
+export async function fetchUniverse(key: string): Promise<UniverseConstituent[]> {
+  const res = await fetch(
+    `${BASE_URL}/api/v1/screener/universes/${encodeURIComponent(key)}`,
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, body.detail ?? res.statusText);
+  }
+  return res.json() as Promise<UniverseConstituent[]>;
 }
 
 export async function fetchAnalysis(ticker: string): Promise<AnalysisResult> {

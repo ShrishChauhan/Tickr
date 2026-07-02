@@ -1,0 +1,124 @@
+.wrapper {
+  width: 100%;
+  overflow-x: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-data);
+  font-size: 0.8125rem;
+}
+
+.tickerHeader,
+.headerCell,
+.actionsHeader {
+  text-align: left;
+  padding: 10px 16px;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  user-select: none;
+}
+
+.tickerHeader,
+.actionsHeader {
+  cursor: default;
+}
+
+.headerCell:hover {
+  color: var(--color-text-primary);
+}
+
+.right {
+  text-align: right;
+}
+
+.sortArrow {
+  color: var(--color-neon-green);
+}
+
+.dataRow {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.dataRow:last-child { border-bottom: none; }
+.dataRow:hover { background: rgba(255, 255, 255, 0.015); }
+
+.tickerCell {
+  padding: 9px 16px;
+  white-space: nowrap;
+}
+
+.tickerLink {
+  font-family: var(--font-data);
+  font-size: 0.875rem;
+  color: var(--color-neon-green);
+  letter-spacing: 0.03em;
+}
+.tickerLink:hover {
+  text-decoration: underline;
+}
+
+.nameCell {
+  padding: 9px 16px;
+  font-family: var(--font-ui);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.valueCell {
+  padding: 9px 16px;
+  text-align: right;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.actionsCell {
+  padding: 9px 16px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.actionLink {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  transition: color 0.15s ease;
+}
+.actionLink:hover {
+  color: var(--color-neon-green);
+}
+
+.skeleton {
+  display: inline-block;
+  width: 48px;
+  height: 12px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+@media (max-width: 900px) {
+  .nameCell {
+    max-width: 140px;
+  }
+}

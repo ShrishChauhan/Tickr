@@ -39,6 +39,9 @@ export default function TopNav({ instant }: TopNavProps) {
         <a href="/compare" className={styles.link}>
           Compare
         </a>
+        <a href="/screener" className={styles.link}>
+          Screener
+        </a>
       </div>
     </motion.nav>
   );

@@ -33,6 +33,7 @@ def derive_ratios(fund: NormalizedFundamentals) -> Ratios:
         pb_ratio  = r.pb_ratio,
         ev_ebitda = r.ev_ebitda,
         ev_revenue= r.ev_revenue,
+        market_cap = r.market_cap,
 
         # Profitability
         gross_margin     = gm_raw             if gm_raw             is not None else _safe_div(is_.gross_profit,    is_.revenue),
