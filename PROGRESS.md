@@ -385,3 +385,29 @@ Specifically:
 8. Remove ticker → chart and table update
 9. Best-per-row: winner has faint green cell bg
 10. Nav "Compare" link routes to `/compare`
+
+## Session 9 (Architecture A2) — 2026-07-06 — Extract orchestration into services/
+
+### Done
+
+- **New `engine/app/services/company.py`:** cache-orchestration + non-equity-fallback normalization for company identity, extracted from `routes.py`. Includes `EXCHANGE_DISPLAY` and its supporting maps (`_NON_EQUITY_QUOTE_TYPES`, `_ASSET_TYPE_MAP`, `_CURRENCY_TO_MARKET`), previously module-level in `routes.py`, plus `_build_non_equity_identity` and the new `get_company_identity()` orchestration function and `CompanyLookupError` exception.
+- **New `engine/app/services/fundamentals.py`:** cache-orchestration + ratio-derivation normalization for fundamentals, extracted from `routes.py`. New `get_fundamentals()` orchestration function and `FundamentalsLookupError` exception.
+- **`routes.py` handlers for `/companies/{ticker}` and `/companies/{ticker}/fundamentals`** reduced to thin request/response wrappers: resolve adapter/validate query params → call service function → translate the service's lookup-error into `HTTPException(404, ...)`. `search_assets` updated to import `EXCHANGE_DISPLAY` from the new location (import path only, no logic change).
+- `_get_adapter`, `_adapters`, and the `_cache` (`LayeredCacheBackend`) singleton stay in `routes.py` — shared by out-of-scope handlers, so the two new service functions take the resolved `adapter` and the shared `cache` instance as plain arguments (dependency injection) rather than routes.py exporting them or services instantiating their own.
+- **Verified byte-identical responses before/after** (stashed the refactor, ran pre-refactor code, captured baselines; popped the stash, ran post-refactor code, diffed) for: `AAPL`, `SHEL`, `GC=F`, `XYZINVALID`, `AAPL/fundamentals`, `AAPL/fundamentals?period=quarterly&limit=3`, invalid period (400), `GC=F/fundamentals` (returns `[]` — yfinance `get_company` succeeds for a futures ticker, `get_fundamentals` just has no statements; not a 404 in this case), `/search?q=apple`. All 9 diffs empty, byte-for-byte — no time-dependent fields even appeared since these cases hit L2 cache carried over from the baseline run.
+- **L1 cache (A1) confirmed working through the new service layer:** fresh ticker (`MSFT`, uncached) took ~2.0s (live EDGAR fetch); immediate repeat took ~0.34s (L1 in-memory hit), response bodies identical.
+- Existing test suite (`engine/tests/`, 25 tests: `test_adapters.py`, `test_analysis.py`, `test_cache.py`) passes unchanged.
+
+### Deferred (not extracted this session)
+
+Filings, search, price-only, screener, and analyze endpoints remain in `routes.py` as-is. Extract in a later session if/when it becomes a blocker (e.g. when adding the provider registry in Phase B).
+
+Known pre-existing asymmetry (not fixed): `/companies/{ticker}` has a non-equity fallback (`_build_non_equity_identity`); `/companies/{ticker}/fundamentals` does not. For most non-equity tickers under the `yfinance` source (fundamentals' default) this doesn't 404 — `adapter.get_company` succeeds and `adapter.get_fundamentals` just returns an empty list — but there's no equivalent fallback path if the adapter's `get_company` call itself fails for a non-equity ticker. Candidate for a future session.
+
+No actual "ticker resolver" module exists (no automatic `.L`/`.DE` retry-on-failure logic) — what exists is (a) the identity-fallback above and (b) suffix-based exchange/market mapping in `YFinanceAdapter` for tickers already given with a suffix. Confirmed via full read of `routes.py` and `adapters/yfinance.py`.
+
+This session also backfills the missing session entry for A1 (in-process L1 cache, commit `5bc6bbd`) — see `engine/app/cache/layered.py` and `memory.py`, not otherwise documented in this file.
+
+### Next
+
+A3: batch screener endpoint using the new service-layer pattern established here.

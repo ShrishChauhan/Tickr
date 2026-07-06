@@ -19,18 +19,18 @@ from ..adapters.yfinance import YFinanceAdapter
 from ..analysis.interface import AnalysisEngine
 from ..cache.layered import LayeredCacheBackend
 from ..cache.ttl_config import (
-    COMPANY_INFO_TTL_SECONDS,
-    FUNDAMENTALS_TTL_SECONDS,
     FILING_REF_TTL_SECONDS,
     AI_ANALYSIS_TTL_SECONDS,
     PRICE_DATA_TTL_SECONDS,
 )
 from ..config import settings
 from ..schema import CompanyIdentity, NormalizedFundamentals, FilingReference, AnalysisResult, PriceOnlyData, OHLCBar
-from ..schema.company import Currency, Exchange, Market
 from ..schema.fundamentals import Period
 from ..schema.filings import FilingType
-from ..utils.ratios import derive_ratios
+from ..services import company as company_service
+from ..services import fundamentals as fundamentals_service
+from ..services.company import CompanyLookupError, EXCHANGE_DISPLAY
+from ..services.fundamentals import FundamentalsLookupError
 
 router = APIRouter()
 
@@ -72,94 +72,16 @@ def _get_analysis_engine() -> Optional[AnalysisEngine]:
     return _analysis_engine
 
 
-_NON_EQUITY_QUOTE_TYPES = {"FUTURE", "CRYPTOCURRENCY", "CURRENCY", "INDEX", "ETF", "MUTUALFUND"}
-
-_ASSET_TYPE_MAP = {
-    "EQUITY":         "equity",
-    "CRYPTOCURRENCY": "crypto",
-    "CURRENCY":       "forex",
-    "FUTURE":         "commodity",
-    "INDEX":          "index",
-    "ETF":            "etf",
-    "MUTUALFUND":     "fund",
-}
-
-_CURRENCY_TO_MARKET = {
-    "GBP": Market.UK,
-    "EUR": Market.DE,
-    "JPY": Market.JP,
-    "INR": Market.IN,
-    "BRL": Market.BR,
-    "MXN": Market.MX,
-}
-
-
-def _build_non_equity_identity(ticker: str) -> Optional[CompanyIdentity]:
-    info = yf.Ticker(ticker).info
-    quote_type = (info.get("quoteType") or "").upper()
-    if quote_type not in _NON_EQUITY_QUOTE_TYPES:
-        return None
-
-    name = info.get("shortName") or info.get("longName") or ticker
-
-    raw_exchange = info.get("exchange") or ""
-    exchange_display = EXCHANGE_DISPLAY.get(raw_exchange, raw_exchange)
-    try:
-        exchange = Exchange(exchange_display)
-    except ValueError:
-        exchange = Exchange.OTHER
-
-    currency_str = (info.get("currency") or "USD").upper()
-    try:
-        currency = Currency(currency_str)
-    except ValueError:
-        currency = Currency.USD
-
-    market = _CURRENCY_TO_MARKET.get(currency.value, Market.US)
-
-    return CompanyIdentity(
-        ticker=ticker,
-        name=name,
-        exchange=exchange,
-        market=market,
-        currency=currency,
-        asset_type=_ASSET_TYPE_MAP.get(quote_type, "equity"),
-        cik=None,
-    )
-
-
 @router.get("/companies/{ticker}", response_model=CompanyIdentity)
 async def get_company(
     ticker: str,
     source: str = Query(default="edgar", description="Data source: edgar or yfinance"),
 ):
     adapter = _get_adapter(source)
-    ticker = ticker.upper()
-    cache_key = f"{source}:company:{ticker}"
-
-    raw = await _cache.get(cache_key)
-    if raw is not None:
-        return CompanyIdentity.model_validate(raw)
-
     try:
-        result = await adapter.get_company(ticker)
-    except Exception as original_exc:
-        loop = asyncio.get_event_loop()
-        try:
-            identity = await loop.run_in_executor(None, _build_non_equity_identity, ticker)
-        except Exception:
-            identity = None
-
-        if identity is None:
-            raise HTTPException(status_code=404, detail=str(original_exc))
-
-        await _cache.set(cache_key, identity.model_dump(mode="json"), COMPANY_INFO_TTL_SECONDS,
-                         data_type="company", ticker=ticker, source=source)
-        return identity
-
-    await _cache.set(cache_key, result.model_dump(mode="json"), COMPANY_INFO_TTL_SECONDS,
-                     data_type="company", ticker=ticker, source=source)
-    return result
+        return await company_service.get_company_identity(adapter, _cache, ticker, source)
+    except CompanyLookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/companies/{ticker}/fundamentals", response_model=List[NormalizedFundamentals])
@@ -175,24 +97,10 @@ async def get_fundamentals(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid period '{period}'. Valid: annual, quarterly, ttm")
 
-    ticker = ticker.upper()
-    cache_key = f"{source}:fundamentals:{ticker}:{period}:{limit}"
-
-    raw = await _cache.get(cache_key)
-    if raw is not None:
-        items = [NormalizedFundamentals.model_validate(item) for item in raw]
-        return [f.model_copy(update={"ratios": derive_ratios(f)}) for f in items]
-
     try:
-        company = await adapter.get_company(ticker)
-        result = await adapter.get_fundamentals(company, period_enum, limit)
-    except Exception as e:
+        return await fundamentals_service.get_fundamentals(adapter, _cache, ticker, source, period_enum, limit)
+    except FundamentalsLookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
-
-    result = [f.model_copy(update={"ratios": derive_ratios(f)}) for f in result]
-    await _cache.set(cache_key, [item.model_dump(mode="json") for item in result],
-                     FUNDAMENTALS_TTL_SECONDS, data_type="fundamentals", ticker=ticker, source=source)
-    return result
 
 
 @router.get("/companies/{ticker}/filings", response_model=List[FilingReference])
@@ -304,17 +212,6 @@ async def analyze_company(
         periods_analyzed=periods_analyzed,
     )
 
-
-EXCHANGE_DISPLAY = {
-    "NMS": "NASDAQ", "NGM": "NASDAQ", "NCM": "NASDAQ",
-    "NYQ": "NYSE",   "ASE": "AMEX",
-    "LSE": "LSE",    "IOB": "LSE",
-    "GER": "XETRA",  "DEX": "XETRA", "ETR": "XETRA",
-    "TYO": "TSE",    "OSA": "TSE",
-    "NSI": "NSE",    "BSE": "BSE",    "BOM": "BSE",
-    "SAO": "B3",     "MEX": "BMV",
-    "CCC": "Crypto", "CCY": "Forex",
-}
 
 _SEARCH_TTL_SECONDS = 3600
 
