@@ -347,7 +347,14 @@ export default function PriceOnlyPage({ identity }: Props) {
                   </span>
                 )}
               </div>
-              <p className={pageStyles.freshness}>Updated {relativeTime(state.data.fetched_at)}</p>
+              <div className={pageStyles.freshnessRow}>
+                <p className={pageStyles.freshness}>Updated {relativeTime(state.data.fetched_at)}</p>
+                <span
+                  className={`${pageStyles.freshnessBadge} ${state.data.is_delayed ? '' : pageStyles.freshnessBadgeLive}`}
+                >
+                  {state.data.freshness_label}
+                </span>
+              </div>
             </>
           )}
         </div>

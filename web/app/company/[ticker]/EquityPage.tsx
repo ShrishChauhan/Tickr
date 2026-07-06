@@ -49,9 +49,16 @@ export default function EquityPage({ data, fundamentals, filings }: Props) {
             )}
           </dl>
           {periodLabel && latest && (
-            <p className={styles.freshness}>
-              Fundamentals as of {periodLabel} · Updated {relativeTime(latest.fetched_at)}
-            </p>
+            <div className={styles.freshnessRow}>
+              <p className={styles.freshness}>
+                Fundamentals as of {periodLabel} · Updated {relativeTime(latest.fetched_at)}
+              </p>
+              <span
+                className={`${styles.freshnessBadge} ${latest.is_delayed ? '' : styles.freshnessBadgeLive}`}
+              >
+                {latest.freshness_label}
+              </span>
+            </div>
           )}
         </div>
         {fundamentals.length > 0 && (

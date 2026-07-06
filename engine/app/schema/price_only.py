@@ -1,6 +1,7 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 from typing import Optional
 from datetime import date
+from .freshness import classify_freshness
 
 
 class OHLCBar(BaseModel):
@@ -28,3 +29,14 @@ class PriceOnlyData(BaseModel):
     contract_month: Optional[str] = None
     ohlc: list[OHLCBar] = []
     fetched_at: str
+    source: str = "yfinance"
+
+    @computed_field
+    @property
+    def is_delayed(self) -> bool:
+        return classify_freshness(self.source)["is_delayed"]
+
+    @computed_field
+    @property
+    def freshness_label(self) -> str:
+        return classify_freshness(self.source)["freshness_label"]

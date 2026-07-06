@@ -2,8 +2,9 @@
 from enum import Enum
 from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 from .company import CompanyIdentity, Currency
+from .freshness import classify_freshness
 
 
 class Period(str, Enum):
@@ -83,3 +84,13 @@ class NormalizedFundamentals(BaseModel):
     source: str                             # "edgar" | "yfinance" | …
     fetched_at: datetime
     as_reported_currency: Optional[Currency] = None  # set if source currency differs from company.currency
+
+    @computed_field
+    @property
+    def is_delayed(self) -> bool:
+        return classify_freshness(self.source)["is_delayed"]
+
+    @computed_field
+    @property
+    def freshness_label(self) -> str:
+        return classify_freshness(self.source)["freshness_label"]

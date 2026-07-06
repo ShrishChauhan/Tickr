@@ -384,6 +384,7 @@ def _sync_fetch_price_data(ticker: str) -> PriceOnlyData:
         contract_month=contract_month,
         ohlc=ohlc_bars,
         fetched_at=datetime.now(timezone.utc).isoformat(),
+        source="yfinance",
     )
 
 

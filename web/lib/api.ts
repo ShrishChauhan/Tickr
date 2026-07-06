@@ -75,6 +75,8 @@ export interface NormalizedFundamentals {
   ratios: Ratios;
   source: string;
   fetched_at: string;
+  is_delayed: boolean;
+  freshness_label: string;
 }
 
 export interface FilingReference {
@@ -156,6 +158,9 @@ export interface PriceOnlyData {
   contract_month: string | null;
   ohlc: OHLCBar[];
   fetched_at: string;
+  source: string;
+  is_delayed: boolean;
+  freshness_label: string;
 }
 
 export class ApiError extends Error {

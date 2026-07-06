@@ -1,7 +1,7 @@
 # Tickr — CLAUDE.md
 
 **Stack:** Python 3.11 / FastAPI (engine) · Next.js 14 / TypeScript (web) · PostgreSQL
-**Phase:** 4a–4d complete (global equities across 7 markets, price-only assets for crypto/forex/commodities/indices, tagged typeahead search, /compare and /screener pages) — next: architecture migration Phase A (latency improvements per ARCHITECTURE.md), then Phase 5 (profiles/auth)
+**Phase:** 4a–4d complete, architecture migration Phase A complete (A1–A6, latency) — Phase B (truthfulness layer) in progress: B1 done (freshness/delay labeling), next B2 (provider registry), then Phase 5 (profiles/auth)
 **Session log:** PROGRESS.md · **Design rules:** ARCHITECTURE.md
 
 ---
@@ -104,6 +104,7 @@ over 20 entries.
 - Price data TTL is 15min; fundamentals TTL is 7d — different cache key prefixes
 - recharts has no Candlestick component — use ComposedChart with custom bars
 - yfinance `.info` call dominates latency — skipping the 3 statement calls barely speeds fetches up
+- pydantic `@computed_field` derived from a stored field round-trips fine through TTL cache
 
 ---
 

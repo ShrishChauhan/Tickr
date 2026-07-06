@@ -466,3 +466,24 @@ PASSED. Company identity fetch on `/company/[ticker]/page.tsx` wired through `us
 ### Next
 
 Phase B: freshness/delay labeling (B1), then provider registry (B2).
+
+---
+
+## Session 12 (Architecture B1) — 2026-07-07 — Freshness/delay labeling
+
+### Done
+
+- **Step 1 finding:** `source` was already tracked two different ways. (1) As a cache-metadata kwarg passed to every `cache.set()` call (company, fundamentals, filings, analysis, search, price, screener_lite) — bookkeeping only, never reached the API response. (2) As a real model field already returned to the frontend on `NormalizedFundamentals`, `FilingReference`, and `AnalysisResult` (set identically at each adapter construction site — `yfinance.py`/`edgar.py` — via `source=self.source_name`). `CompanyIdentity` and `PriceOnlyData` carried no source field at all. Also found the equity page's existing freshness text (`EquityPage.tsx`) reads `latest.fetched_at` off `NormalizedFundamentals`, not off `CompanyIdentity` — so `NormalizedFundamentals` was the correct schema to extend, not `CompanyIdentity`.
+- **`engine/app/schema/freshness.py` (new):** `DELAYED_SOURCES = {yfinance, edgar}`, `REAL_TIME_SOURCES = set()` (B3/B4 populate later), `classify_freshness(source) -> {is_delayed, freshness_label}`. Checks `REAL_TIME_SOURCES` membership first so an unrecognized future source defaults to "delayed" (conservative) rather than "real-time" (optimistic).
+- Since `source` was already a stored field, `is_delayed`/`freshness_label` were added as **pydantic `@computed_field` properties** (not stored fields) on `NormalizedFundamentals` and `PriceOnlyData` — derived from `source` on every access/serialization, so no adapter construction site needed touching (would have been 4 near-identical edits across `yfinance.py`/`edgar.py`). Verified this round-trips cleanly through the TTL cache (`model_dump` → store → `model_validate` on read ignores the extra computed keys and recomputes them).
+- `PriceOnlyData` gained a real `source: str = "yfinance"` field (didn't have one before); set explicitly in `routes.py`'s `_sync_fetch_price_data`.
+- Frontend: `web/lib/api.ts` types updated (`NormalizedFundamentals` and `PriceOnlyData` gain `source`/`is_delayed`/`freshness_label`). Badge added next to the existing "Updated X ago" text on `EquityPage.tsx` and `PriceOnlyPage.tsx`, styled as a muted pill (`.freshnessBadge` in the shared `page.module.css`) matching the existing exchange-badge visual weight — `.freshnessBadgeLive` modifier (unused today) ready for when a real real-time source lands.
+- Screener: skipped per-row freshness labeling. The screener currently shows no timestamp/freshness of any kind per row (dense table, all yfinance), so adding one now would be new UI surface rather than extending an existing pattern — deferred until there's an actual mixed-source screener to make the label meaningful.
+
+### Verified
+
+`tsc --noEmit` and `npm run build` clean. Engine: hit `/api/v1/companies/AAPL/fundamentals` and `/api/v1/assets/BTC-USD/price` directly — both return `is_delayed: true` / `freshness_label: "~15 min delayed"`. Screenshotted both pages via `npx playwright screenshot` (no project run-skill existed yet, no `chromium-cli` available; used the Playwright CLI directly against the running dev servers) — AAPL equity page shows "Fundamentals as of FY2025 · Updated 10 hr ago [~15 MIN DELAYED]", BTC-USD price-only page shows "Updated 4 min ago [~15 MIN DELAYED]". No console errors, both requests 200.
+
+### Next
+
+B2: provider registry (data_type, asset_class) -> ordered provider list, yfinance fallback. This is what B1's freshness label will key off of once real sources exist.
