@@ -1,16 +1,18 @@
 # Provider registry — (asset_type) -> ordered QuoteProvider list, first success wins.
 # Only price/quote data flows through here; fundamentals/company identity still go
 # through DataAdapter directly (adapters/base.py). yfinance is the universal
-# fallback today; B3 (Binance)/B4 (Finnhub)/B6 (FX) will prepend class-specific
-# providers to the relevant bucket with no changes to get_quote()'s call sites.
+# fallback today; B4 (Finnhub)/B6 (FX) will prepend class-specific providers to
+# the relevant bucket with no changes to get_quote()'s call sites.
 from typing import Optional
 
 from ..adapters.yfinance import YFinanceQuoteProvider
+from ..adapters.coinbase import CoinbaseQuoteProvider
 
 _yfinance_quote_provider = YFinanceQuoteProvider()
+_coinbase_quote_provider = CoinbaseQuoteProvider()
 
 _REGISTRY = {
-    "crypto":    [_yfinance_quote_provider],   # B3 will prepend Binance here
+    "crypto":    [_coinbase_quote_provider, _yfinance_quote_provider],  # B3
     "forex":     [_yfinance_quote_provider],   # B6 will prepend a free FX source here
     "commodity": [_yfinance_quote_provider],
     "index":     [_yfinance_quote_provider],

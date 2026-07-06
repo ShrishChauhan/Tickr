@@ -509,3 +509,29 @@ Hit `GET /api/v1/assets/{ticker}/price` for `AAPL` (equity), `BTC-USD` (crypto),
 ### Next
 
 B3: Binance crypto real-time provider. Gated behind K1 (geo-restriction curl-test from the deploy region) before prepending it to the `crypto` bucket in `provider_registry.py`.
+
+---
+
+## Session 14 (Architecture B3) — 2026-07-07 — Coinbase crypto real-time provider
+
+### Phase 1 (K1 kill-test)
+
+Binance, Coinbase, and Kraken all returned HTTP 200 with live data when curled directly from this machine (India). But ARCHITECTURE.md's K1 framing turned out to be stale: Binance's India-specific block was resolved in Aug 2024 (FIU registration) — the actual, current risk is different and bigger. Binance's public API has returned HTTP 451 to **all US-region IPs** since Nov 2022 (confirmed via multiple 2026 sources — ccxt issue trackers, Binance dev forum), and US is the *default* region on Vercel (`iad1`) and a common default on Railway/Render/AWS. Tickr's deploy region isn't fixed yet, so this is a realistic future-blocking scenario, not a hypothetical one — exactly the "research strongly suggests deployment-region blocking" branch the task called out as a hard stop. Surfaced this to the user via `AskUserQuestion` (with the safety-net context that B2's registry already falls through to yfinance on any provider error, so even a blocked deploy wouldn't crash anything, just silently lose real-time crypto). **User chose Coinbase as the primary provider instead of Binance.**
+
+### Done
+
+- **`engine/app/adapters/coinbase.py` (new):** `CoinbaseQuoteProvider`, using Coinbase's Exchange public REST (`api.exchange.coinbase.com`, no key). Ticker format is a non-issue here — Tickr's crypto ticker convention (`BTC-USD`) matches Coinbase's product-ID format exactly, so no mapping table was needed (unlike the Binance plan, which would have needed `BTC-USD` → `BTCUSDT` translation). A symbol Coinbase doesn't list 404s on `/products/{id}/ticker`, which `raise_for_status()` turns into an exception — caught by the registry as a decline, same as any other provider failure.
+  - Combines three endpoints per quote: `/ticker` (current price), `/stats` (24h open/high/low/volume, used to derive `change_24h`/`change_24h_pct`), `/candles?granularity=86400` (daily OHLC, ~300 days back — Coinbase's per-request cap, so `high_52w`/`low_52w` are best-effort off that window rather than a true 52 weeks, falling back to `/stats`' 24h high/low if candles come back empty).
+  - `name` resolved via `/currencies/{base}` (e.g. `BTC` → `"Bitcoin"`); falls back to the base currency code if that call fails.
+  - `market_cap`/`circulating_supply` left `None` — no free Coinbase endpoint provides them, and B2's schema already tolerates missing fields per-source.
+- **`engine/app/services/provider_registry.py`:** `crypto` bucket is now `[coinbase, yfinance]`.
+- **`engine/app/schema/freshness.py`:** `REAL_TIME_SOURCES` now `{"coinbase"}` (was empty).
+- **`engine/app/services/price.py`:** `get_price` now picks the cache TTL by freshness instead of hardcoding `PRICE_DATA_TTL_SECONDS` for every source — real-time sources (currently just Coinbase) get `PRICE_TTL_SECONDS` (30s, previously unused dead config) so a live quote doesn't sit in cache long enough to become effectively delayed; yfinance-served quotes keep the existing 15-minute TTL.
+
+### Verified
+
+`GET /api/v1/assets/BTC-USD/price` and `ETH-USD` both return `source: "coinbase"`, `is_delayed: false`, `freshness_label: "Real-time"`, with live prices and a populated `ohlc` array. `SHIB-USD` also served by Coinbase (lists more pairs than expected); a genuinely nonexistent ticker (`FAKECOIN-USD`) 404s on Coinbase and falls through cleanly to yfinance's existing not-found behavior — confirms the fallback path the same way B2's monkeypatch test did, without needing to fake a failure. Other asset classes (`AAPL` equity, `GC=F` commodity, `EURUSD=X` forex, `^GSPC` index) unaffected, still `source: "yfinance"`. Loaded `/company/BTC-USD` in a real browser (`npx playwright screenshot`, 9s wait per the known Framer-Motion-headless timing gotcha) — green "REAL-TIME" badge renders, candlestick chart shows genuine Coinbase daily OHLC.
+
+### Next
+
+B4: Finnhub US equity real-time quote provider, gated by rate-limit verification (60 calls/min free tier) rather than a geo kill-test.

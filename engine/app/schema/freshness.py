@@ -1,10 +1,10 @@
 # Source-driven freshness classification — labels read whichever source actually
-# served a response, so B3 (Binance)/B4 (Finnhub) light up "Real-time" automatically
+# served a response, so B3 (Coinbase)/B4 (Finnhub) light up "Real-time" automatically
 # later without touching call sites.
 from typing import TypedDict
 
 DELAYED_SOURCES = {"yfinance", "edgar"}
-REAL_TIME_SOURCES: set[str] = set()  # B3/B4 populate this
+REAL_TIME_SOURCES: set[str] = {"coinbase"}  # B4 adds "finnhub"
 
 
 class Freshness(TypedDict):
