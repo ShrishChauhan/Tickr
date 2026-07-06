@@ -1,7 +1,7 @@
 # Tickr — CLAUDE.md
 
 **Stack:** Python 3.11 / FastAPI (engine) · Next.js 14 / TypeScript (web) · PostgreSQL
-**Phase:** 1 (data adapters) complete — Phase 2a (DB setup + migrations) in progress
+**Phase:** 4a–4d complete (global equities across 7 markets, price-only assets for crypto/forex/commodities/indices, tagged typeahead search, /compare and /screener pages) — next: architecture migration Phase A (latency improvements per ARCHITECTURE.md), then Phase 5 (profiles/auth)
 **Session log:** PROGRESS.md · **Design rules:** ARCHITECTURE.md
 
 ---
