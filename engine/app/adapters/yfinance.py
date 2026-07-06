@@ -10,6 +10,7 @@ from .base import DataAdapter
 from ..schema import CompanyIdentity, Market, Exchange, Currency
 from ..schema import NormalizedFundamentals, Period, IncomeStatement, BalanceSheet, CashFlowStatement, Ratios
 from ..schema import FilingReference, FilingType
+from ..schema import ScreenerFields
 
 _EXCHANGE_MAP = {
     # NASDAQ tiers
@@ -340,6 +341,28 @@ class YFinanceAdapter(DataAdapter):
                 fetched_at=now,
             )
         ]
+
+    async def get_lite_fundamentals(self, ticker: str) -> ScreenerFields:
+        """`.info`-only fetch for the screener batch endpoint — skips the 3 statement calls
+        that `_sync_get_fundamentals` makes, at the cost of free_cash_flow (no .info equivalent)."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._sync_get_lite_fundamentals, ticker)
+
+    def _sync_get_lite_fundamentals(self, ticker: str) -> ScreenerFields:
+        t = yf.Ticker(ticker)
+        info = t.info
+        g = lambda k: _safe(info.get(k))
+        return ScreenerFields(
+            currency=info.get("currency"),
+            market_cap=g("marketCap"),
+            pe_ratio=g("trailingPE"),
+            net_margin=g("profitMargins"),
+            roe=g("returnOnEquity"),
+            debt_to_equity=g("debtToEquity"),
+            gross_margin=g("grossMargins"),
+            revenue=g("totalRevenue"),
+            free_cash_flow=None,
+        )
 
     async def get_filings(
         self,

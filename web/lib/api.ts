@@ -97,9 +97,18 @@ export interface SearchResult {
   sector: string | null;
 }
 
-export interface UniverseConstituent {
+export interface ScreenerRow {
   ticker: string;
   name: string;
+  currency: string | null;
+  market_cap: number | null;
+  pe_ratio: number | null;
+  net_margin: number | null;
+  roe: number | null;
+  debt_to_equity: number | null;
+  gross_margin: number | null;
+  revenue: number | null;
+  free_cash_flow: number | null;
 }
 
 export async function fetchSearch(query: string): Promise<SearchResult[]> {
@@ -206,15 +215,15 @@ export async function fetchPriceOnly(ticker: string): Promise<PriceOnlyData> {
   return res.json() as Promise<PriceOnlyData>;
 }
 
-export async function fetchUniverse(key: string): Promise<UniverseConstituent[]> {
+export async function fetchScreenerRows(universeKey: string): Promise<ScreenerRow[]> {
   const res = await fetch(
-    `${BASE_URL}/api/v1/screener/universes/${encodeURIComponent(key)}`,
+    `${BASE_URL}/api/v1/screener/${encodeURIComponent(universeKey)}/rows`,
   );
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     throw new ApiError(res.status, body.detail ?? res.statusText);
   }
-  return res.json() as Promise<UniverseConstituent[]>;
+  return res.json() as Promise<ScreenerRow[]>;
 }
 
 export async function fetchAnalysis(ticker: string): Promise<AnalysisResult> {

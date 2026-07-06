@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { fetchUniverse, fetchFundamentals } from '@/lib/api';
-import type { UniverseConstituent, NormalizedFundamentals } from '@/lib/api';
+import { fetchScreenerRows } from '@/lib/api';
 import ScreenerTable from '@/components/screener/ScreenerTable';
 import type { ScreenerRow, SortKey, SortDir } from '@/components/screener/ScreenerTable';
 import styles from './page.module.css';
@@ -17,10 +16,7 @@ const UNIVERSES = [
 
 type UniverseKey = (typeof UNIVERSES)[number]['key'];
 
-const CONCURRENCY = 8;
-
-type RowResult = NormalizedFundamentals | 'error';
-
+// No FCF filter — the batch screener endpoint's lite fetch has no .info equivalent for free cash flow.
 interface Filters {
   marketCapMin: string;
   marketCapMax: string;
@@ -31,7 +27,6 @@ interface Filters {
   debtToEquityMax: string;
   grossMarginMin: string;
   revenueMin: string;
-  fcfPositive: boolean;
 }
 
 const EMPTY_FILTERS: Filters = {
@@ -44,7 +39,6 @@ const EMPTY_FILTERS: Filters = {
   debtToEquityMax: '',
   grossMarginMin: '',
   revenueMin: '',
-  fcfPositive: false,
 };
 
 function currencySymbolForUniverse(key: UniverseKey): string {
@@ -96,7 +90,7 @@ export default function ScreenerPage() {
 
         {universeKey === 'sp500' && (
           <p className={styles.notice}>
-            Large universe — may take 1-2 minutes to fully load. Rows fill in as data arrives.
+            Large universe — first load can take up to 2 minutes. Subsequent loads are fast (cached).
           </p>
         )}
 
@@ -142,13 +136,6 @@ export default function ScreenerPage() {
             <input className={styles.filterInput} type="number" placeholder="Min" value={filters.revenueMin} onChange={e => updateFilter('revenueMin', e.target.value)} />
           </div>
 
-          <div className={styles.filterGroup}>
-            <label className={styles.filterCheckboxLabel}>
-              <input type="checkbox" checked={filters.fcfPositive} onChange={e => updateFilter('fcfPositive', e.target.checked)} />
-              Free Cash Flow &gt; 0
-            </label>
-          </div>
-
           <button className={styles.clearButton} onClick={() => setFilters(EMPTY_FILTERS)}>
             Clear filters
           </button>
@@ -178,52 +165,24 @@ interface ScreenerResultsProps {
 }
 
 function ScreenerResults({ universeKey, filters, sortKey, sortDir, onSort }: ScreenerResultsProps) {
-  const [constituents, setConstituents] = useState<UniverseConstituent[]>([]);
-  const [universeLoading, setUniverseLoading] = useState(true);
-  const [results, setResults] = useState<Record<string, RowResult>>({});
+  const [rows, setRows] = useState<ScreenerRow[]>([]);
+  const [rowsLoading, setRowsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
+    setRowsLoading(true);
 
-    fetchUniverse(universeKey)
-      .then(list => {
+    fetchScreenerRows(universeKey)
+      .then(data => {
         if (cancelled) return;
-        setConstituents(list);
-        setUniverseLoading(false);
-        runPool(list.map(c => c.ticker));
+        setRows(data);
+        setRowsLoading(false);
       })
       .catch(() => {
         if (cancelled) return;
-        setConstituents([]);
-        setUniverseLoading(false);
+        setRows([]);
+        setRowsLoading(false);
       });
-
-    function runPool(tickers: string[]) {
-      let cursor = 0;
-      let active = 0;
-
-      function pump() {
-        if (cancelled) return;
-        while (active < CONCURRENCY && cursor < tickers.length) {
-          const ticker = tickers[cursor++];
-          active++;
-          fetchFundamentals(ticker, 'annual', 1)
-            .then(data => {
-              if (cancelled) return;
-              setResults(prev => ({ ...prev, [ticker]: data[0] ?? 'error' }));
-            })
-            .catch(() => {
-              if (cancelled) return;
-              setResults(prev => ({ ...prev, [ticker]: 'error' }));
-            })
-            .finally(() => {
-              active--;
-              pump();
-            });
-        }
-      }
-      pump();
-    }
 
     return () => {
       cancelled = true;
@@ -231,41 +190,22 @@ function ScreenerResults({ universeKey, filters, sortKey, sortDir, onSort }: Scr
   }, [universeKey]);
 
   const anyFilterActive = useMemo(
-    () => Object.entries(filters).some(([k, v]) => (k === 'fcfPositive' ? v === true : v !== '')),
+    () => Object.values(filters).some(v => v !== ''),
     [filters],
   );
-
-  const rows: ScreenerRow[] = useMemo(() => {
-    return constituents.map(c => {
-      const r = results[c.ticker];
-      const status: ScreenerRow['status'] = r === undefined ? 'loading' : r === 'error' ? 'error' : 'loaded';
-      return {
-        ticker: c.ticker,
-        name: c.name,
-        status,
-        data: status === 'loaded' ? (r as NormalizedFundamentals) : undefined,
-      };
-    });
-  }, [constituents, results]);
 
   const filteredRows = useMemo(() => {
     if (!anyFilterActive) return rows;
     return rows.filter(row => {
-      if (row.status !== 'loaded' || !row.data) return false;
-      const ratios = row.data.ratios;
-      const revenue = row.data.income_statement.revenue;
-      const fcf = row.data.cash_flow.free_cash_flow;
-
-      if (filters.marketCapMin && (ratios.market_cap ?? -Infinity) < Number(filters.marketCapMin) * 1e9) return false;
-      if (filters.marketCapMax && (ratios.market_cap ?? Infinity) > Number(filters.marketCapMax) * 1e9) return false;
-      if (filters.peMin && (ratios.pe_ratio ?? -Infinity) < Number(filters.peMin)) return false;
-      if (filters.peMax && (ratios.pe_ratio ?? Infinity) > Number(filters.peMax)) return false;
-      if (filters.netMarginMin && (ratios.net_margin ?? -Infinity) < Number(filters.netMarginMin) / 100) return false;
-      if (filters.roeMin && (ratios.roe ?? -Infinity) < Number(filters.roeMin) / 100) return false;
-      if (filters.debtToEquityMax && (ratios.debt_to_equity ?? Infinity) > Number(filters.debtToEquityMax)) return false;
-      if (filters.grossMarginMin && (ratios.gross_margin ?? -Infinity) < Number(filters.grossMarginMin) / 100) return false;
-      if (filters.revenueMin && (revenue ?? -Infinity) < Number(filters.revenueMin) * 1e6) return false;
-      if (filters.fcfPositive && !(fcf != null && fcf > 0)) return false;
+      if (filters.marketCapMin && (row.market_cap ?? -Infinity) < Number(filters.marketCapMin) * 1e9) return false;
+      if (filters.marketCapMax && (row.market_cap ?? Infinity) > Number(filters.marketCapMax) * 1e9) return false;
+      if (filters.peMin && (row.pe_ratio ?? -Infinity) < Number(filters.peMin)) return false;
+      if (filters.peMax && (row.pe_ratio ?? Infinity) > Number(filters.peMax)) return false;
+      if (filters.netMarginMin && (row.net_margin ?? -Infinity) < Number(filters.netMarginMin) / 100) return false;
+      if (filters.roeMin && (row.roe ?? -Infinity) < Number(filters.roeMin) / 100) return false;
+      if (filters.debtToEquityMax && (row.debt_to_equity ?? Infinity) > Number(filters.debtToEquityMax)) return false;
+      if (filters.grossMarginMin && (row.gross_margin ?? -Infinity) < Number(filters.grossMarginMin) / 100) return false;
+      if (filters.revenueMin && (row.revenue ?? -Infinity) < Number(filters.revenueMin) * 1e6) return false;
 
       return true;
     });
@@ -273,15 +213,14 @@ function ScreenerResults({ universeKey, filters, sortKey, sortDir, onSort }: Scr
 
   const sortedRows = useMemo(() => {
     function metric(row: ScreenerRow): number | string | null {
-      if (!row.data) return null;
       switch (sortKey) {
         case 'name': return row.name;
-        case 'market_cap': return row.data.ratios.market_cap;
-        case 'pe_ratio': return row.data.ratios.pe_ratio;
-        case 'net_margin': return row.data.ratios.net_margin;
-        case 'roe': return row.data.ratios.roe;
-        case 'revenue': return row.data.income_statement.revenue;
-        case 'gross_margin': return row.data.ratios.gross_margin;
+        case 'market_cap': return row.market_cap;
+        case 'pe_ratio': return row.pe_ratio;
+        case 'net_margin': return row.net_margin;
+        case 'roe': return row.roe;
+        case 'revenue': return row.revenue;
+        case 'gross_margin': return row.gross_margin;
       }
     }
 
@@ -301,12 +240,16 @@ function ScreenerResults({ universeKey, filters, sortKey, sortDir, onSort }: Scr
   return (
     <>
       <p className={styles.countLabel}>
-        {universeLoading
-          ? 'Loading universe…'
-          : `${sortedRows.length} of ${constituents.length} stocks match`}
+        {rowsLoading
+          ? 'Loading…'
+          : `${sortedRows.length} of ${rows.length} stocks match`}
       </p>
 
-      <ScreenerTable rows={sortedRows} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+      {rowsLoading ? (
+        <p className={styles.notice}>Fetching {universeKey.toUpperCase()} constituents…</p>
+      ) : (
+        <ScreenerTable rows={sortedRows} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+      )}
     </>
   );
 }

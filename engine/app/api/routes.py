@@ -6,9 +6,7 @@
 #   analysis:{TICKER}:{source}:{period}:{limit}
 #   price:{TICKER}
 import asyncio
-import json
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import List, Optional
 
 import yfinance as yf
@@ -24,13 +22,15 @@ from ..cache.ttl_config import (
     PRICE_DATA_TTL_SECONDS,
 )
 from ..config import settings
-from ..schema import CompanyIdentity, NormalizedFundamentals, FilingReference, AnalysisResult, PriceOnlyData, OHLCBar
+from ..schema import CompanyIdentity, NormalizedFundamentals, FilingReference, AnalysisResult, PriceOnlyData, OHLCBar, ScreenerRow
 from ..schema.fundamentals import Period
 from ..schema.filings import FilingType
 from ..services import company as company_service
 from ..services import fundamentals as fundamentals_service
+from ..services import screener as screener_service
 from ..services.company import CompanyLookupError, EXCHANGE_DISPLAY
 from ..services.fundamentals import FundamentalsLookupError
+from ..services.universes import load_universe, UnknownUniverseError
 
 router = APIRouter()
 
@@ -40,14 +40,6 @@ _adapters = {
 }
 
 _cache = LayeredCacheBackend()
-
-_UNIVERSES_DIR = Path(__file__).resolve().parent.parent / "data" / "universes"
-_UNIVERSES = {
-    "dow30": json.loads((_UNIVERSES_DIR / "dow30.json").read_text(encoding="utf-8")),
-    "nifty50": json.loads((_UNIVERSES_DIR / "nifty50.json").read_text(encoding="utf-8")),
-    "nasdaq100": json.loads((_UNIVERSES_DIR / "nasdaq100.json").read_text(encoding="utf-8")),
-    "sp500": json.loads((_UNIVERSES_DIR / "sp500.json").read_text(encoding="utf-8")),
-}
 
 _analysis_engine: Optional[AnalysisEngine] = None
 
@@ -423,10 +415,16 @@ async def get_asset_price(ticker: str):
 
 @router.get("/screener/universes/{key}")
 async def get_screener_universe(key: str):
-    universe = _UNIVERSES.get(key)
-    if universe is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown universe '{key}'. Valid: {', '.join(_UNIVERSES.keys())}",
-        )
-    return universe
+    try:
+        return load_universe(key)
+    except UnknownUniverseError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/screener/{universe_key}/rows", response_model=List[ScreenerRow])
+async def get_screener_rows(universe_key: str):
+    adapter = _get_adapter("yfinance")
+    try:
+        return await screener_service.get_screener_rows(adapter, _cache, universe_key, "yfinance")
+    except UnknownUniverseError as e:
+        raise HTTPException(status_code=404, detail=str(e))

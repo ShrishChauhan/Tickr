@@ -103,6 +103,7 @@ over 20 entries.
 - Shell/SHEL.L reports in USD despite LSE — prefer info["currency"] over suffix
 - Price data TTL is 15min; fundamentals TTL is 7d — different cache key prefixes
 - recharts has no Candlestick component — use ComposedChart with custom bars
+- yfinance `.info` call dominates latency — skipping the 3 statement calls barely speeds fetches up
 
 ---
 

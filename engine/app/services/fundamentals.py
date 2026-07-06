@@ -2,9 +2,10 @@
 from typing import List
 
 from ..adapters.base import DataAdapter
+from ..adapters.yfinance import YFinanceAdapter
 from ..cache.base import CacheBackend
 from ..cache.ttl_config import FUNDAMENTALS_TTL_SECONDS
-from ..schema import NormalizedFundamentals
+from ..schema import NormalizedFundamentals, ScreenerFields
 from ..schema.fundamentals import Period
 from ..utils.ratios import derive_ratios
 
@@ -39,3 +40,22 @@ async def get_fundamentals(
     await cache.set(cache_key, [item.model_dump(mode="json") for item in result],
                      FUNDAMENTALS_TTL_SECONDS, data_type="fundamentals", ticker=ticker, source=source)
     return result
+
+
+async def get_lite_fundamentals(
+    adapter: YFinanceAdapter,
+    cache: CacheBackend,
+    ticker: str,
+    source: str,
+) -> ScreenerFields:
+    ticker = ticker.upper()
+    cache_key = f"{source}:screener_lite:{ticker}"
+
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        return ScreenerFields.model_validate(cached)
+
+    fields = await adapter.get_lite_fundamentals(ticker)
+    await cache.set(cache_key, fields.model_dump(mode="json"),
+                     FUNDAMENTALS_TTL_SECONDS, data_type="screener_lite", ticker=ticker, source=source)
+    return fields

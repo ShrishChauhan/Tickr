@@ -4,6 +4,7 @@ from .fundamentals import NormalizedFundamentals, Period, IncomeStatement, Balan
 from .filings import FilingReference, FilingType
 from .analysis import AnalysisResult
 from .price_only import PriceOnlyData, OHLCBar
+from .screener import ScreenerFields, ScreenerRow
 
 __all__ = [
     "CompanyIdentity", "Market", "Exchange", "Currency",
@@ -11,4 +12,5 @@ __all__ = [
     "FilingReference", "FilingType",
     "AnalysisResult",
     "PriceOnlyData", "OHLCBar",
+    "ScreenerFields", "ScreenerRow",
 ]

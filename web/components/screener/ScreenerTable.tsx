@@ -1,19 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import type { NormalizedFundamentals } from '@/lib/api';
+import type { ScreenerRow } from '@/lib/api';
 import { getCurrencySymbol, fmtDollar, fmtPct, fmtMultiple } from '@/lib/format';
 import styles from './ScreenerTable.module.css';
 
 export type SortKey = 'name' | 'market_cap' | 'pe_ratio' | 'net_margin' | 'roe' | 'revenue' | 'gross_margin';
 export type SortDir = 'asc' | 'desc';
 
-export interface ScreenerRow {
-  ticker: string;
-  name: string;
-  status: 'loading' | 'error' | 'loaded';
-  data?: NormalizedFundamentals;
-}
+export type { ScreenerRow };
 
 interface Props {
   rows: ScreenerRow[];
@@ -56,11 +51,7 @@ export default function ScreenerTable({ rows, sortKey, sortDir, onSort }: Props)
         </thead>
         <tbody>
           {rows.map(row => {
-            const currSym = row.data ? getCurrencySymbol(row.data.currency) : '$';
-            const ratios = row.data?.ratios;
-            const revenue = row.data?.income_statement.revenue;
-            const isError = row.status === 'error';
-            const isLoading = row.status === 'loading';
+            const currSym = row.currency ? getCurrencySymbol(row.currency) : '$';
 
             return (
               <tr key={row.ticker} className={styles.dataRow}>
@@ -70,24 +61,12 @@ export default function ScreenerTable({ rows, sortKey, sortDir, onSort }: Props)
                   </Link>
                 </td>
                 <td className={styles.nameCell}>{row.name}</td>
-                <td className={styles.valueCell}>
-                  {isLoading ? <span className={styles.skeleton} /> : isError ? '—' : fmtDollar(ratios?.market_cap, currSym)}
-                </td>
-                <td className={styles.valueCell}>
-                  {isLoading ? <span className={styles.skeleton} /> : isError ? '—' : fmtMultiple(ratios?.pe_ratio)}
-                </td>
-                <td className={styles.valueCell}>
-                  {isLoading ? <span className={styles.skeleton} /> : isError ? '—' : fmtPct(ratios?.net_margin)}
-                </td>
-                <td className={styles.valueCell}>
-                  {isLoading ? <span className={styles.skeleton} /> : isError ? '—' : fmtPct(ratios?.roe)}
-                </td>
-                <td className={styles.valueCell}>
-                  {isLoading ? <span className={styles.skeleton} /> : isError ? '—' : fmtDollar(revenue, currSym)}
-                </td>
-                <td className={styles.valueCell}>
-                  {isLoading ? <span className={styles.skeleton} /> : isError ? '—' : fmtPct(ratios?.gross_margin)}
-                </td>
+                <td className={styles.valueCell}>{fmtDollar(row.market_cap, currSym)}</td>
+                <td className={styles.valueCell}>{fmtMultiple(row.pe_ratio)}</td>
+                <td className={styles.valueCell}>{fmtPct(row.net_margin)}</td>
+                <td className={styles.valueCell}>{fmtPct(row.roe)}</td>
+                <td className={styles.valueCell}>{fmtDollar(row.revenue, currSym)}</td>
+                <td className={styles.valueCell}>{fmtPct(row.gross_margin)}</td>
                 <td className={styles.actionsCell}>
                   <Link href={`/company/${row.ticker}`} className={styles.actionLink}>View</Link>
                   <Link href={`/compare?tickers=${row.ticker}`} className={styles.actionLink}>Compare</Link>

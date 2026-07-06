@@ -411,3 +411,32 @@ This session also backfills the missing session entry for A1 (in-process L1 cach
 ### Next
 
 A3: batch screener endpoint using the new service-layer pattern established here.
+
+## Session 10 (Architecture A3) — 2026-07-06 — Batch screener endpoint
+
+### K6 resolution
+
+6/8 filter fields (Market Cap, P/E, Net Margin, ROE, Debt/Equity, Gross Margin) are already `.info`-derivable via the existing `_build_ratios_from_info()` mapping. Revenue is not currently read anywhere but `.info["totalRevenue"]` exists — added at zero extra cost. Free Cash Flow has no `.info` equivalent at all (only derivable from `t.get_cash_flow()`, the slow path) — dropped from the batch/lite path entirely; the endpoint always returns `free_cash_flow: null` and the frontend's "FCF > 0" filter checkbox was removed (a null field can never satisfy `> 0`). The compare page (full fetch, untouched) remains the place to see actual FCF.
+
+### Done
+
+- New `engine/app/schema/screener.py`: `ScreenerFields` (flat, nullable numeric fields) + `ScreenerRow` (adds ticker/name).
+- New `YFinanceAdapter.get_lite_fundamentals()` (`engine/app/adapters/yfinance.py`) — `.info`-only fetch, not added to the `DataAdapter` ABC since the screener has always been yfinance-only.
+- New `engine/app/services/universes.py`: extracted the inline `_UNIVERSES` dict/loading out of `routes.py` into `load_universe()`/`UnknownUniverseError`; the existing `/screener/universes/{key}` route now uses it too (same source of truth).
+- New `engine/app/services/fundamentals.py::get_lite_fundamentals()`: cache-orchestration for the lite fetch, cache key `{source}:screener_lite:{ticker}`, reuses `FUNDAMENTALS_TTL_SECONDS` (1 day) — no new TTL constant.
+- New `engine/app/services/screener.py::get_screener_rows()`: fan-out via `asyncio.gather`-equivalent (`asyncio.wait` over per-ticker tasks) + `Semaphore(CONCURRENCY=8)` — matches the old frontend pool size since yfinance can soft-rate-limit a single IP at higher concurrency, and this now runs behind one shared server IP. Per-ticker `wait_for(..., timeout=10)` bounds a hung ticker; per-ticker `try/except` returns a null row instead of failing the request. Outer `asyncio.wait(..., timeout=150)` is a safety net (not the expected path) that returns partial results if the whole batch runs long. Logs succeeded/failed/timed-out counts + elapsed time at INFO.
+- New route `GET /api/v1/screener/{universe_key}/rows` — thin, no `source` param (yfinance-only, same as `/screener/universes/{key}`).
+- Frontend (`web/lib/api.ts`, `ScreenerTable.tsx`, `screener/page.tsx`): replaced the client-side `CONCURRENCY=8` work-stealing pool + per-ticker `fetchFundamentals` calls with one `fetchScreenerRows(universeKey)` call. Removed `fetchUniverse`/`UniverseConstituent` (redundant now — the batch response already carries ticker+name for every constituent). Removed per-cell loading/error skeleton logic (`fmtDollar`/`fmtPct`/`fmtMultiple` already render `null` as `—`); a single `rowsLoading` boolean now gates a page-level loading message instead of the table. Removed the non-functional FCF filter checkbox.
+
+### Measured timing (important — revises the original estimate)
+
+- dow30: cold 14.2s, warm (cached) 0.29s.
+- sp500 (503 tickers): the lite (`.info`-only) fetch is **not** dramatically faster than the old full fetch — yfinance's `.info` call itself is the dominant per-ticker cost, not the 3 extra statement calls it skips. A first attempt with a 90s safety-net timeout returned 447/503 (89%) before cutting off; raising the timeout and re-running (partially cache-warm) completed all 503 in ~137s combined wall time. Settled on `BATCH_TIMEOUT_SECONDS = 150` as the safety net. Updated the frontend's S&P 500 notice from "1-2 minutes, rows fill in as data arrives" to "first load can take up to 2 minutes; subsequent loads are fast (cached)" — the real win here is architectural (1 request instead of ~500, cacheable, enables A5 pre-warming) rather than a raw per-ticker speedup.
+
+### Verified
+
+`curl` against dow30/sp500 (cold + warm timings above, all rows populated, `free_cash_flow: null` throughout, 0 failed tickers on the full sp500 run). Playwright-driven production build (`npm run build && npm run start`, StrictMode off) confirmed: exactly one `/api/v1/screener/*/rows` request per universe selection (dev mode with StrictMode showed 2 — a pre-existing double-invoke artifact of the `key`-remount pattern that already existed before this change, not a regression, and absent in production), P/E filter narrows 30→6 rows correctly, zero console errors, and the screener→compare deep link (`?tickers=NVDA`) still works.
+
+### Next
+
+A5: GitHub Actions pre-warm cron hitting `/api/v1/screener/{universe_key}/rows` per universe daily, so cold requests (and the 150s safety-net timeout) become rare in practice.
