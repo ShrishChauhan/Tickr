@@ -78,6 +78,48 @@ separate from the disposable Postgres cache):
 
 ---
 
+## Running locally
+
+**Prerequisites:** Python 3.11+, Node 18+, and a PostgreSQL instance (local or
+hosted — e.g. [Neon](https://neon.tech)). No API keys are required for the
+core data sources; the two keys below unlock optional features.
+
+**1. Engine setup**
+
+```powershell
+python -m venv engine\.venv
+engine\.venv\Scripts\python.exe -m pip install -e "engine[dev]"
+```
+
+Copy `.env.example` to `.env` and set `DATABASE_URL` to your Postgres
+instance. `GROQ_API_KEY` and `SEC_IDENTITY` are optional — Groq powers the AI
+analysis layer, and `SEC_IDENTITY` (any email) is required by SEC EDGAR's
+User-Agent policy if you hit US-filings endpoints.
+
+```powershell
+engine\.venv\Scripts\python.exe -m alembic upgrade head
+```
+
+Start the engine (from repo root):
+
+```powershell
+engine\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --app-dir engine
+```
+
+**2. Web setup**
+
+```bash
+cd web && npm install && npm run dev
+```
+
+**3. Verify**
+
+- Engine health: [http://localhost:8000/health](http://localhost:8000/health)
+- Engine API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Web app: [http://localhost:3000](http://localhost:3000)
+
+---
+
 ## Development notes
 
 `CLAUDE.md` has the working conventions (directory map, adapter pattern,
