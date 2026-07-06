@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
 from ..adapters.edgar import EdgarAdapter
 from ..adapters.yfinance import YFinanceAdapter
 from ..analysis.interface import AnalysisEngine
-from ..cache.postgres import PostgresCacheBackend
+from ..cache.layered import LayeredCacheBackend
 from ..cache.ttl_config import (
     COMPANY_INFO_TTL_SECONDS,
     FUNDAMENTALS_TTL_SECONDS,
@@ -39,7 +39,7 @@ _adapters = {
     "yfinance": YFinanceAdapter(),
 }
 
-_cache = PostgresCacheBackend()
+_cache = LayeredCacheBackend()
 
 _UNIVERSES_DIR = Path(__file__).resolve().parent.parent / "data" / "universes"
 _UNIVERSES = {

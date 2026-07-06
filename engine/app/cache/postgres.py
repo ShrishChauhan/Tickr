@@ -39,6 +39,54 @@ class PostgresCacheBackend(CacheBackend):
             logger.debug("CACHE HIT: %s", key)
         return payload
 
+    async def get_with_ttl(self, key: str) -> Optional[tuple[Any, int]]:
+        """Like get(), but also returns remaining TTL in seconds. Used by LayeredCacheBackend
+        to repopulate L1 with the same expiry L2 already has, rather than a guessed one."""
+        if not SessionLocal:
+            return None
+        try:
+            return await asyncio.get_running_loop().run_in_executor(None, self._get_with_ttl_sync, key)
+        except Exception:
+            logger.warning("Cache get_with_ttl failed: %s", key, exc_info=True)
+            return None
+
+    def _get_with_ttl_sync(self, key: str) -> Optional[tuple[Any, int]]:
+        now = datetime.now(timezone.utc)
+        with SessionLocal() as session:
+            row = (
+                session.query(CacheEntry)
+                .filter(CacheEntry.cache_key == key, CacheEntry.expires_at > now)
+                .first()
+            )
+            if row is None:
+                return None
+            remaining = max(1, int((row.expires_at - now).total_seconds()))
+            return row.payload, remaining
+
+    async def get_with_ttl(self, key: str) -> Optional[tuple[Any, int]]:
+        """Like get(), but also returns remaining TTL in seconds. Used by LayeredCacheBackend
+        to repopulate L1 with the same expiry L2 already has, rather than a guessed one."""
+        if not SessionLocal:
+            return None
+        try:
+            return await asyncio.get_running_loop().run_in_executor(None, self._get_with_ttl_sync, key)
+        except Exception:
+            logger.warning("Cache get_with_ttl failed: %s", key, exc_info=True)
+            return None
+
+    def _get_with_ttl_sync(self, key: str) -> Optional[tuple[Any, int]]:
+        now = datetime.now(timezone.utc)
+        with SessionLocal() as session:
+            row = (
+                session.query(CacheEntry)
+                .filter(CacheEntry.cache_key == key, CacheEntry.expires_at > now)
+                .first()
+            )
+            if row is None:
+                return None
+            remaining = max(1, int((row.expires_at - now).total_seconds()))
+            return row.payload, remaining
+
     async def set(self, key: str, value: Any, ttl_seconds: int, *,
                   data_type: str = "", ticker: str = "", source: str = "") -> None:
         if not SessionLocal:
