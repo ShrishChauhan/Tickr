@@ -7,16 +7,18 @@ from typing import Optional
 
 from ..adapters.yfinance import YFinanceQuoteProvider
 from ..adapters.coinbase import CoinbaseQuoteProvider
+from ..adapters.finnhub import FinnhubQuoteProvider
 
 _yfinance_quote_provider = YFinanceQuoteProvider()
 _coinbase_quote_provider = CoinbaseQuoteProvider()
+_finnhub_quote_provider = FinnhubQuoteProvider()
 
 _REGISTRY = {
     "crypto":    [_coinbase_quote_provider, _yfinance_quote_provider],  # B3
     "forex":     [_yfinance_quote_provider],   # B6 will prepend a free FX source here
     "commodity": [_yfinance_quote_provider],
     "index":     [_yfinance_quote_provider],
-    "equity":    [_yfinance_quote_provider],   # B4 will prepend Finnhub here
+    "equity":    [_finnhub_quote_provider, _yfinance_quote_provider],  # B4
 }
 
 

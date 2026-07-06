@@ -1,7 +1,7 @@
 # Tickr — CLAUDE.md
 
 **Stack:** Python 3.11 / FastAPI (engine) · Next.js 14 / TypeScript (web) · PostgreSQL
-**Phase:** 4a–4d complete, architecture migration Phase A complete (A1–A6, latency) — Phase B (truthfulness layer) in progress: B1 (freshness/delay labeling), B2 (provider registry), B3 (Coinbase crypto, chosen over Binance — see K1 in PROGRESS.md) done, next B4 (Finnhub US equity real-time), then Phase 5 (profiles/auth)
+**Phase:** 4a–4d complete, architecture migration Phase A complete (A1–A6, latency) — Phase B (truthfulness layer) in progress: B1 (freshness/delay labeling), B2 (provider registry), B3 (Coinbase crypto, chosen over Binance — see K1 in PROGRESS.md), B4 (Finnhub US equity real-time; backend done, no UI consumer yet — see Session 15 in PROGRESS.md) done, next B5 (nsepython India, gated behind reliability kill-test), then Phase 5 (profiles/auth)
 **Session log:** PROGRESS.md · **Design rules:** ARCHITECTURE.md
 
 ---
@@ -106,6 +106,8 @@ over 20 entries.
 - yfinance `.info` call dominates latency — skipping the 3 statement calls barely speeds fetches up
 - pydantic `@computed_field` derived from a stored field round-trips fine through TTL cache
 - Binance blocks all US IPs (451) since 2022, not just India — check deploy region, not origin
+- EquityPage never fetches price/quote data — only PriceOnlyPage renders real-time badges
+- Layered cache L1 is in-process — deleting a key from another script won't clear a running server's L1
 
 ---
 

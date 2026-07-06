@@ -535,3 +535,33 @@ Binance, Coinbase, and Kraken all returned HTTP 200 with live data when curled d
 ### Next
 
 B4: Finnhub US equity real-time quote provider, gated by rate-limit verification (60 calls/min free tier) rather than a geo kill-test.
+
+---
+
+## Session 15 (Architecture B4) — 2026-07-07 — Finnhub US equity real-time provider
+
+### Phase 1 (key + rate-limit verification)
+
+User obtained a free Finnhub API key and provided it directly; added to `.env` as `FINNHUB_API_KEY`, placeholder added to `.env.example`. `curl https://finnhub.io/api/v1/quote?symbol=AAPL&token=...` confirmed real, current quote data. Rate-limit reasoning: Tickr's equity price path is on-demand single-ticker (one `/quote` call per page load; the screener uses a separate lite-fundamentals fetch that never touches the price registry), so even several concurrent users viewing different US-equity pages in the same minute stays well under Finnhub's 60 calls/min free-tier ceiling. Not a real concern at this project's current traffic — no rate-limiting infrastructure added (YAGNI). Would need revisiting only if concurrent traffic grew substantially.
+
+### Done
+
+- **`engine/app/adapters/finnhub.py` (new):** `FinnhubQuoteProvider`, calling Finnhub's `/quote` REST endpoint only (one call per quote — deliberately skipped `/stock/profile2` for company name/market cap, since the task spec calls for `market_cap: None` from this provider anyway, same pattern as Coinbase leaving `circulating_supply` null; adding a second call per quote would have halved the effective rate-limit budget for data that shouldn't be populated regardless). Declines (`None`) immediately if `FINNHUB_API_KEY` is unset, and declines any ticker containing a `.` (all of Tickr's non-US markets — UK/DE/JP/IN/BR/MX — use dotted suffixes per `adapters/yfinance.py`'s `_SUFFIX_MAP`), so the registry falls through to yfinance cleanly either way. Also declines if Finnhub returns an all-zero quote (its signal for an unrecognized symbol). `name` field is just the ticker symbol — traced the frontend and confirmed `PriceOnlyData.name` is never actually rendered for equities (see gap below), so fetching a real company name wasn't worth a second API call.
+- **`engine/app/config.py`:** added `FINNHUB_API_KEY: str = ""` to `Settings`, same pattern as `GROQ_API_KEY`.
+- **`engine/app/services/provider_registry.py`:** `equity` bucket is now `[finnhub, yfinance]`.
+- **`engine/app/schema/freshness.py`:** `REAL_TIME_SOURCES` now `{"coinbase", "finnhub"}`.
+- Confirmed (didn't just assume) that `price.py`'s TTL selection needed no changes — it already keys off `result.is_delayed`, which keys off `source` via `REAL_TIME_SOURCES`, so Finnhub automatically gets the short `PRICE_TTL_SECONDS` (30s) with zero code changes, exactly as B3's Coinbase did.
+
+### Found: no UI surface renders equity quote data at all
+
+Verification step 4 (browser check for the "Real-time" badge, mirroring B3's Coinbase check) turned up a structural gap, not a bug in this session's code: `page.tsx` routes every ticker with `asset_type === 'equity'` to `EquityPage`, which shows a freshness badge sourced from **fundamentals** (`latest.is_delayed`/`latest.freshness_label`, from edgar/yfinance) and never calls `/api/v1/assets/{ticker}/price` at all. Only non-equity assets (crypto/forex/commodity/index) route to `PriceOnlyPage`, the only component that reads `PriceOnlyData.freshness_label`. `SearchBar.tsx`'s prefetch-on-hover mirrors the same split (equities prefetch fundamentals/filings, everything else prefetches price). This means Finnhub's real-time quote — and yfinance's equity quote, even before this session — has never had anywhere to render in the UI. Not introduced by B4; B3's crypto-only verification never exposed it because crypto always goes through `PriceOnlyPage`. Surfaced to the user via `AskUserQuestion`; **decided to ship B4 as backend-only and defer the UI gap** rather than scope-creep into adding a price ticker to `EquityPage` in this session.
+
+### Verified
+
+`GET /api/v1/assets/AAPL/price` → `source: "finnhub"`, `is_delayed: false`, `freshness_label: "Real-time"`, empty `ohlc` (confirmed `PriceOnlyPage`'s existing empty-chart state — "No chart data available for this timeframe" — would handle this gracefully if it were ever routed there). `GET /api/v1/assets/SHEL.L/price` → declines Finnhub (dotted suffix), falls through to `yfinance` unchanged. Direct adapter call with `FINNHUB_API_KEY=""` → returns `None` with no exception. Crypto (`BTC-USD`), forex (`EURUSD=X`), commodity (`GC=F`) all unaffected, still their B2/B3 sources. Note: an early test hit a **stale Postgres-cached** `AAPL` row from a prior session (`source: yfinance`, 15-min TTL) — not a bug, just the L1 in-process + L2 Postgres layered cache outliving the code change; resolved by deleting the cache key and restarting the engine process (L1 is process-local, a cross-process `cache.delete()` alone doesn't touch a different running server's L1). Browser verification of the actual badge was not possible per the gap above — confirmed via direct API calls only, not a live page.
+
+### Next
+
+B5: nsepython India adapter — gated behind a 1-week reliability kill-test (measure breakage rate across ~20 NSE tickers daily before shipping) per ARCHITECTURE.md's more cautious treatment of this fragile scraper-based source.
+
+Also open: no UI surface shows live/real-time price data for equities (see "Found" above) — worth a small follow-up to add a price ticker + freshness badge to `EquityPage`, giving Finnhub (and future equity real-time sources) somewhere to actually render.

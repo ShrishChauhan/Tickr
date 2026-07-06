@@ -4,7 +4,7 @@
 from typing import TypedDict
 
 DELAYED_SOURCES = {"yfinance", "edgar"}
-REAL_TIME_SOURCES: set[str] = {"coinbase"}  # B4 adds "finnhub"
+REAL_TIME_SOURCES: set[str] = {"coinbase", "finnhub"}
 
 
 class Freshness(TypedDict):
