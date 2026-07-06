@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
+import useSWR from 'swr';
 import {
   LineChart,
   Line,
@@ -13,6 +14,8 @@ import {
 } from 'recharts';
 import { fetchPriceOnly, ApiError } from '@/lib/api';
 import type { CompanyIdentity, PriceOnlyData, OHLCBar } from '@/lib/api';
+import { priceOnlyKey } from '@/lib/swrKeys';
+import { priceDataConfig } from '@/lib/swrConfig';
 import { relativeTime } from '@/lib/format';
 import pageStyles from './page.module.css';
 import styles from './PriceOnlyPage.module.css';
@@ -289,22 +292,19 @@ function MetadataGrid({ data }: { data: PriceOnlyData }) {
 }
 
 export default function PriceOnlyPage({ identity }: Props) {
-  const [state, setState] = useState<InternalState>({ kind: 'loading' });
   const [timeframe, setTimeframe] = useState<Timeframe>('3M');
 
-  useEffect(() => {
-    let cancelled = false;
-    setState({ kind: 'loading' });
-    fetchPriceOnly(identity.ticker).then(data => {
-      if (!cancelled) setState({ kind: 'success', data });
-    }).catch(err => {
-      if (!cancelled) setState({
-        kind: 'error',
-        message: err instanceof ApiError ? err.message : 'Failed to load price data',
-      });
-    });
-    return () => { cancelled = true; };
-  }, [identity.ticker]);
+  const { data, error, isLoading } = useSWR<PriceOnlyData, ApiError>(
+    priceOnlyKey(identity.ticker),
+    () => fetchPriceOnly(identity.ticker),
+    priceDataConfig,
+  );
+
+  const state: InternalState = isLoading
+    ? { kind: 'loading' }
+    : error
+      ? { kind: 'error', message: error instanceof ApiError ? error.message : 'Failed to load price data' }
+      : { kind: 'success', data: data! };
 
   const filteredBars = useMemo(() => {
     if (state.kind !== 'success') return [];

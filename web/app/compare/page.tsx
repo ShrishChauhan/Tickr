@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import useSWR from 'swr';
 import {
   RadarChart,
   Radar,
@@ -15,6 +16,7 @@ import {
 } from 'recharts';
 import { fetchSearch, fetchCompany, fetchFundamentals } from '@/lib/api';
 import type { NormalizedFundamentals, SearchResult } from '@/lib/api';
+import { searchKey } from '@/lib/swrKeys';
 import { getCurrencySymbol, fmtDollar, fmtPct, fmtMultiple } from '@/lib/format';
 import styles from './page.module.css';
 
@@ -105,23 +107,32 @@ function CompareContent() {
   const [dataMap, setDataMap]     = useState<Record<string, NormalizedFundamentals[]>>({});
   const [loadingSet, setLoadingSet] = useState<Set<string>>(new Set());
   const [query, setQuery]         = useState('');
-  const [results, setResults]     = useState<SearchResult[]>([]);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [note, setNote]           = useState<{ text: string; kind: 'error' | 'warn' } | null>(null);
 
   const containerRef  = useRef<HTMLDivElement>(null);
   const noteTimerRef  = useRef<ReturnType<typeof setTimeout>>(undefined);
 
+  const { data: results = [] } = useSWR<SearchResult[]>(
+    debouncedQuery ? searchKey(debouncedQuery) : null,
+    () => fetchSearch(debouncedQuery),
+    { keepPreviousData: true },
+  );
+
   // Typeahead debounce
   useEffect(() => {
-    if (!query.trim()) { setResults([]); setDropdownOpen(false); return; }
-    const tid = setTimeout(async () => {
-      const res = await fetchSearch(query);
-      setResults(res);
-      setDropdownOpen(res.length > 0);
-    }, 300);
+    if (!query.trim()) { setDebouncedQuery(''); setDropdownOpen(false); return; }
+    const tid = setTimeout(() => setDebouncedQuery(query.trim()), 300);
     return () => clearTimeout(tid);
   }, [query]);
+
+  // Only re-open on a new committed query, not on every background SWR
+  // revalidation of the same key — otherwise a dismissed dropdown could
+  // silently reopen with stale results (JSX below still gates on results.length).
+  useEffect(() => {
+    if (debouncedQuery) setDropdownOpen(true);
+  }, [debouncedQuery]);
 
   // Close dropdown on outside click
   useEffect(() => {

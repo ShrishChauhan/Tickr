@@ -2,8 +2,10 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import useSWR, { preload } from 'swr';
 import styles from './SearchBar.module.css';
-import { fetchSearch, SearchResult } from '../../lib/api';
+import { fetchSearch, fetchCompany, fetchFundamentals, fetchFilings, fetchPriceOnly, SearchResult } from '../../lib/api';
+import { searchKey, companyKey, fundamentalsKey, filingsKey, priceOnlyKey } from '../../lib/swrKeys';
 
 const TICKER_RE = /^[A-Z0-9.=^-]{1,16}$/;
 
@@ -15,13 +17,18 @@ const ASSET_TYPE_LABEL: Record<string, string> = {
 export default function SearchBar() {
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [highlighted, setHighlighted] = useState(-1);
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { data: results = [], isLoading: loading } = useSWR<SearchResult[]>(
+    debouncedQuery.trim() ? searchKey(debouncedQuery) : null,
+    () => fetchSearch(debouncedQuery),
+    { keepPreviousData: true },
+  );
 
   useEffect(() => {
     function handleMouseDown(e: MouseEvent) {
@@ -33,6 +40,16 @@ export default function SearchBar() {
     return () => document.removeEventListener('mousedown', handleMouseDown);
   }, []);
 
+  // Only re-open on a new committed query (debouncedQuery changing), not on every
+  // background SWR revalidation of the same key (e.g. window refocus) — otherwise
+  // a dismissed dropdown could silently reopen with stale results.
+  useEffect(() => {
+    if (debouncedQuery.trim() !== '') {
+      setOpen(true);
+      setHighlighted(-1);
+    }
+  }, [debouncedQuery]);
+
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const newValue = e.target.value;
     setValue(newValue);
@@ -40,28 +57,31 @@ export default function SearchBar() {
 
     if (!newValue.trim()) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      setResults([]);
+      setDebouncedQuery('');
       setOpen(false);
-      setLoading(false);
       return;
     }
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => {
-      const q = newValue.trim();
-      setLoading(true);
-      const r = await fetchSearch(q);
-      setResults(r);
-      setOpen(r.length > 0);
-      setHighlighted(-1);
-      setLoading(false);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedQuery(newValue.trim());
     }, 300);
+  }
+
+  function prefetchResult(r: SearchResult) {
+    preload(companyKey(r.ticker), () => fetchCompany(r.ticker));
+    if (r.asset_type === 'equity') {
+      preload(fundamentalsKey(r.ticker), () => fetchFundamentals(r.ticker));
+      preload(filingsKey(r.ticker), () => fetchFilings(r.ticker));
+    } else {
+      preload(priceOnlyKey(r.ticker), () => fetchPriceOnly(r.ticker));
+    }
   }
 
   function selectResult(r: SearchResult) {
     setValue(r.ticker);
     setOpen(false);
-    setResults([]);
+    setDebouncedQuery('');
     setError(null);
     router.push(`/company/${r.ticker}`);
   }
@@ -155,6 +175,7 @@ export default function SearchBar() {
                   : styles.dropdownRow
               }
               onMouseDown={() => selectResult(r)}
+              onMouseEnter={() => prefetchResult(r)}
             >
               <span className={styles.dropdownTicker}>{r.ticker}</span>
               <span className={styles.dropdownName}>{r.name}</span>

@@ -1,9 +1,19 @@
 'use client';
 
 import Link from 'next/link';
+import { preload } from 'swr';
+import { fetchCompany, fetchFundamentals, fetchFilings } from '@/lib/api';
 import type { ScreenerRow } from '@/lib/api';
+import { companyKey, fundamentalsKey, filingsKey } from '@/lib/swrKeys';
 import { getCurrencySymbol, fmtDollar, fmtPct, fmtMultiple } from '@/lib/format';
 import styles from './ScreenerTable.module.css';
+
+// Screener universes are all equities, so this always warms company + fundamentals + filings.
+function prefetchCompany(ticker: string) {
+  preload(companyKey(ticker), () => fetchCompany(ticker));
+  preload(fundamentalsKey(ticker), () => fetchFundamentals(ticker));
+  preload(filingsKey(ticker), () => fetchFilings(ticker));
+}
 
 export type SortKey = 'name' | 'market_cap' | 'pe_ratio' | 'net_margin' | 'roe' | 'revenue' | 'gross_margin';
 export type SortDir = 'asc' | 'desc';
@@ -56,7 +66,11 @@ export default function ScreenerTable({ rows, sortKey, sortDir, onSort }: Props)
             return (
               <tr key={row.ticker} className={styles.dataRow}>
                 <td className={styles.tickerCell}>
-                  <Link href={`/company/${row.ticker}`} className={styles.tickerLink}>
+                  <Link
+                    href={`/company/${row.ticker}`}
+                    className={styles.tickerLink}
+                    onMouseEnter={() => prefetchCompany(row.ticker)}
+                  >
                     {row.ticker}
                   </Link>
                 </td>
@@ -68,7 +82,13 @@ export default function ScreenerTable({ rows, sortKey, sortDir, onSort }: Props)
                 <td className={styles.valueCell}>{fmtDollar(row.revenue, currSym)}</td>
                 <td className={styles.valueCell}>{fmtPct(row.gross_margin)}</td>
                 <td className={styles.actionsCell}>
-                  <Link href={`/company/${row.ticker}`} className={styles.actionLink}>View</Link>
+                  <Link
+                    href={`/company/${row.ticker}`}
+                    className={styles.actionLink}
+                    onMouseEnter={() => prefetchCompany(row.ticker)}
+                  >
+                    View
+                  </Link>
                   <Link href={`/compare?tickers=${row.ticker}`} className={styles.actionLink}>Compare</Link>
                 </td>
               </tr>

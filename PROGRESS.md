@@ -440,3 +440,29 @@ A3: batch screener endpoint using the new service-layer pattern established here
 ### Next
 
 A5: GitHub Actions pre-warm cron hitting `/api/v1/screener/{universe_key}/rows` per universe daily, so cold requests (and the 150s safety-net timeout) become rare in practice.
+
+## Session 11 (Architecture A6) — 2026-07-07 — SWR + prefetch-on-hover
+
+### Phase 1 (K5 smoke-test)
+
+PASSED. Company identity fetch on `/company/[ticker]/page.tsx` wired through `useSWR` (installed `swr@2.4.2`) instead of `useEffect`+`fetch`. Verified via a temporary Playwright script (installed, used, uninstalled — not a project dependency): production build clean, exactly one request per load, zero duplicate requests, and background revalidation confirmed firing correctly once past the default 2s dedup window (176–187ms to visible cached content on revisit, no loading flash). No Next 16.2.9 / React 19.2.4 compatibility issues found despite `web/AGENTS.md`'s non-standard-build warning — resolves the K5 risk from ARCHITECTURE.md.
+
+### Phase 2 — full migration
+
+- **New `web/lib/swrKeys.ts`:** key-builder functions (`companyKey`, `fundamentalsKey`, `filingsKey`, `priceOnlyKey`, `screenerKey`, `searchKey`) so every `useSWR` call and every `preload()` call for the same resource produce an identical string key. Ticker casing/whitespace normalized *inside* each builder (not at call sites) since tickers enter from four independent places (route param, `SearchResult.ticker`, `ScreenerRow.ticker`, compare's manual input).
+- **New `web/lib/swrConfig.ts`:** three named config objects matching client cache behavior to `engine/app/cache/ttl_config.py`'s server TTLs — `dailyDataConfig` (10min dedupe, `revalidateOnFocus: false`, for company/fundamentals/filings — 1 day server TTL), `priceDataConfig` (15min dedupe, matches `PRICE_DATA_TTL_SECONDS` exactly), `screenerConfig` (5min dedupe, no dedicated server TTL to match).
+- **`web/app/company/[ticker]/page.tsx`:** identity + fundamentals + filings all converted to `useSWR` (fundamentals/filings null-keyed when not equity). Explicitly replicates the old `Promise.allSettled` partial-failure tolerance — gates on loading state only, not on fundamentals/filings errors, so one failed sub-fetch still degrades to `[]` instead of surfacing a page-level error.
+- **`web/app/company/[ticker]/PriceOnlyPage.tsx`:** `useEffect`+`useState<InternalState>` replaced with `useSWR` + `priceDataConfig`; same `InternalState` shape reconstructed as a computed value so render code was untouched.
+- **`web/components/hero/SearchBar.tsx`:** kept the exact 300ms debounce timing, but the timer now sets a `debouncedQuery` state consumed by `useSWR(..., { keepPreviousData: true })` instead of calling `fetchSearch` directly. Added `onMouseEnter` hover-prefetch on dropdown rows (`preload()` for company + fundamentals/filings-or-price, based on `SearchResult.asset_type`). Fixed a subtle bug in my own first draft: an effect that re-opened the dropdown on every `results` change would have reopened a dismissed dropdown on background SWR revalidation (e.g. window refocus) — changed to key off `debouncedQuery` transitions instead, which only change from explicit typing.
+- **`web/app/screener/page.tsx`:** `ScreenerResults`'s inner fetch converted to `useSWR` + `screenerConfig`; kept the outer `key={universeKey}` remount pattern untouched (already correct, no reason to touch it).
+- **`web/components/screener/ScreenerTable.tsx`:** hover-prefetch added to the ticker-cell and "View" links (not "Compare" — out of scope). Screener rows are always equities, so both prefetch company+fundamentals+filings.
+- **`web/app/compare/page.tsx`:** only the typeahead was migrated (same debounce→`useSWR`+`keepPreviousData` pattern, for consistency with SearchBar). `addTicker`'s `fetchCompany`/`fetchFundamentals` calls were deliberately left as raw `fetch`-based calls, untouched — a Plan-agent design review (before implementation) caught that SWR's `preload()` doesn't check the durable cache or respect `dedupingInterval` (it only dedupes against another in-flight `preload()` via a separate one-shot map, consumed and discarded the moment any `useSWR` hook mounts with that key), so routing `addTicker` through `preload()` as originally planned would not have delivered real cross-page cache reuse and would have leaked unconsumed promises for every ticker ever added. Confirmed with the user before implementing: leave `addTicker` as raw fetches.
+- Not touched (explicitly out of scope): hero landing page's markets ribbon fetch (animation-timed), `AnalysisPanel`'s `fetchAnalysis` (fires twice in dev — pre-existing React 19 StrictMode double-invoke quirk, unrelated), hover-prefetch on the screener's "Compare" link, any restructuring of compare page's `addTicker`/`dataMap`/`tickers` state.
+
+### Verified
+
+`npm run build` + `npm run lint` clean. Temporary Playwright script (installed, used, uninstalled) against both dev servers confirmed: search debounce still fires exactly one request per settled query (not per keystroke) on both SearchBar and compare page; hovering a search-dropdown row prefetches company+fundamentals+filings (3 requests) ahead of click, landing on the company page in ~44ms; hovering a screener "View" link does the same (~39ms to settle post-click); screener filter typing fires zero new row requests (client-side filtering, confirmed unaffected); compare page still renders the radar chart and full comparison table end-to-end via a `?tickers=` deep link; company page (identity+fundamentals+filings, now 3 separate `useSWR` calls) renders pixel-identical to the Phase 1 screenshot; a price-only asset page (`BTC-USD`) renders price/chart/market-cap correctly (needed a longer wait in my test — first-fetch yfinance latency, not a regression); hero landing page unaffected, zero console errors throughout every check.
+
+### Next
+
+Phase B: freshness/delay labeling (B1), then provider registry (B2).

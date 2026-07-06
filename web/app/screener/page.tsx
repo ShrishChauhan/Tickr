@@ -1,8 +1,11 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
+import useSWR from 'swr';
 import { fetchScreenerRows } from '@/lib/api';
+import { screenerKey } from '@/lib/swrKeys';
+import { screenerConfig } from '@/lib/swrConfig';
 import ScreenerTable from '@/components/screener/ScreenerTable';
 import type { ScreenerRow, SortKey, SortDir } from '@/components/screener/ScreenerTable';
 import styles from './page.module.css';
@@ -165,29 +168,11 @@ interface ScreenerResultsProps {
 }
 
 function ScreenerResults({ universeKey, filters, sortKey, sortDir, onSort }: ScreenerResultsProps) {
-  const [rows, setRows] = useState<ScreenerRow[]>([]);
-  const [rowsLoading, setRowsLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setRowsLoading(true);
-
-    fetchScreenerRows(universeKey)
-      .then(data => {
-        if (cancelled) return;
-        setRows(data);
-        setRowsLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setRows([]);
-        setRowsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [universeKey]);
+  const { data: rows = [], isLoading: rowsLoading } = useSWR<ScreenerRow[]>(
+    screenerKey(universeKey),
+    () => fetchScreenerRows(universeKey),
+    screenerConfig,
+  );
 
   const anyFilterActive = useMemo(
     () => Object.values(filters).some(v => v !== ''),
