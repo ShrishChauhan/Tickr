@@ -565,3 +565,42 @@ Verification step 4 (browser check for the "Real-time" badge, mirroring B3's Coi
 B5: nsepython India adapter — gated behind a 1-week reliability kill-test (measure breakage rate across ~20 NSE tickers daily before shipping) per ARCHITECTURE.md's more cautious treatment of this fragile scraper-based source.
 
 Also open: no UI surface shows live/real-time price data for equities (see "Found" above) — worth a small follow-up to add a price ticker + freshness badge to `EquityPage`, giving Finnhub (and future equity real-time sources) somewhere to actually render.
+
+## Session 16 (Architecture B5) — 2026-07-07 — nsepython kill-test: deferred, no adapter built
+
+### Evaluation
+
+The planned B5 workflow was a two-part kill-test: build a daily harness, log ~20 NSE tickers/day for a week, then evaluate the breakage rate. Before writing that harness, ran a one-time smoke test to confirm `nsepython` was even reachable from this dev machine — it wasn't. `nsepython.nse_eq()` returned `{}` for every symbol tried (RELIANCE, TCS, INFY, HDFCBANK). Tracing into `nsepython`'s own `nsefetch()`, the raw HTTP response is a **403 "Access Denied" from Akamai** (NSE's CDN/bot-management layer) — not a malformed payload, not a rate limit, and not geo-blocking: the request's egress IP (122.161.65.73) is an ordinary Indian ISP address, and even the plain NSE **homepage** GET (before any API call) was blocked. This reads as Akamai's bot-fingerprint detection rejecting the `requests` library's TLS/HTTP signature outright — a categorical, deterministic block, not the intermittent breakage the week-long harness was designed to measure.
+
+### Decision
+
+Surfaced this to the user via `AskUserQuestion` before committing to the week-long harness (same checkpoint the plan called for, just triggered earlier by decisive evidence). **Chose to skip the week and defer B5 indefinitely** — a full week of daily polling would almost certainly log 0/20 every day, so it wouldn't add information the smoke test didn't already provide. Treating this the same way K1 (Binance geo-block) was resolved in B3: a cheap pre-check answered the kill-test before any adapter code was written.
+
+No `engine/scripts/` harness, no `nse_reliability_log.jsonl`, and no `engine/app/adapters/india.py` were created. `nsepython` (and its `scipy` dependency) were installed into the venv for this smoke test only and have been uninstalled — never added to `pyproject.toml`.
+
+### If revisited later
+
+Bypassing Akamai's fingerprinting would require a browser-impersonating HTTP client (e.g. `curl_cffi`, `cloudscraper`) or a headless-browser-based scraper — a materially heavier dependency/maintenance footprint than the "adapter + yfinance fallback" pattern used for B3/B4, and arguably against this project's YAGNI stance for a source that's explicitly lower-priority than US/crypto coverage. Not attempted in this session. India equities continue to be served by yfinance's `.NS`/`.BO` path (Phase 4a), unchanged and unaffected by this decision.
+
+### Next
+
+B6: free FX source for forex, gated behind its own kill-test (update cadence + rate limit measured for a day, per ARCHITECTURE.md K4).
+
+## Session 17 (Architecture B6) — 2026-07-07 — Free FX source evaluation: no provider built
+
+### Phase 1 (K4 cadence check)
+
+Tested the two candidates named in ARCHITECTURE.md §4/§8: `api.frankfurter.app` (`.dev` redirects to it) and `api.exchangerate-api.com`'s free v4 endpoint. Both returned a `date` of `2026-07-06` — one calendar day stale at query time — and both confirm this is by design, not a fluke, via their own docs:
+
+- **exchangerate-api free tier:** docs state outright, "Updates Once Per Day" / "the data only refreshes once every 24 hours anyway." They even note hourly polling is harmless specifically *because* nothing changes between polls.
+- **Frankfurter:** sources ECB reference rates (the name is a pun on the ECB's home city). ECB reference rates are published once per TARGET business day, never intraday, never on weekends — consistent with the observed one-day-stale response.
+
+Baseline check: Tickr's existing yfinance forex path (`EURUSD=X`, already live since Phase 4b) was pulled directly — `history(period="1d", interval="1m")` returned 1-minute bars, with the most recent bar timestamped within ~1 minute of the query. yfinance's forex data is already minute-granularity intraday, not a daily snapshot.
+
+### Decision
+
+Both free candidates are strictly worse than what Tickr already serves for forex — building an adapter around either would be a downgrade dressed up as a new data source. Per this session's own stated criteria, this is the correct stop condition, not a failed session. **No adapter written.** Updated the stale forward-looking comments in `provider_registry.py` (previously said "B6 will prepend a free FX source here") to record the finding instead, so a future reader doesn't chase this same dead end without knowing it was already checked.
+
+### Next
+
+Phase B (truthfulness layer) is now complete — B1–B6 all resolved (B5 deferred indefinitely on a hard bot-block, B6 concluded no upgrade exists, both documented decisions rather than gaps). Move to Phase 5 (profiles/auth) per ARCHITECTURE.md's roadmap, which needs a permanent user-data store (Supabase) separate from the disposable Neon TTL cache.

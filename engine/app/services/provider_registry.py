@@ -1,8 +1,9 @@
 # Provider registry — (asset_type) -> ordered QuoteProvider list, first success wins.
 # Only price/quote data flows through here; fundamentals/company identity still go
 # through DataAdapter directly (adapters/base.py). yfinance is the universal
-# fallback today; B4 (Finnhub)/B6 (FX) will prepend class-specific providers to
-# the relevant bucket with no changes to get_quote()'s call sites.
+# fallback today; B4 (Finnhub) prepends a class-specific provider with no
+# changes to get_quote()'s call sites. B6 (FX) evaluated free sources and
+# found none beat yfinance's own forex data — no provider added.
 from typing import Optional
 
 from ..adapters.yfinance import YFinanceQuoteProvider
@@ -15,7 +16,7 @@ _finnhub_quote_provider = FinnhubQuoteProvider()
 
 _REGISTRY = {
     "crypto":    [_coinbase_quote_provider, _yfinance_quote_provider],  # B3
-    "forex":     [_yfinance_quote_provider],   # B6 will prepend a free FX source here
+    "forex":     [_yfinance_quote_provider],   # B6 evaluated Frankfurter/exchangerate-api: both daily-only, worse than yfinance's minute-level forex data — no provider added, see PROGRESS.md
     "commodity": [_yfinance_quote_provider],
     "index":     [_yfinance_quote_provider],
     "equity":    [_finnhub_quote_provider, _yfinance_quote_provider],  # B4
