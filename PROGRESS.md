@@ -487,3 +487,25 @@ Phase B: freshness/delay labeling (B1), then provider registry (B2).
 ### Next
 
 B2: provider registry (data_type, asset_class) -> ordered provider list, yfinance fallback. This is what B1's freshness label will key off of once real sources exist.
+
+---
+
+## Session 13 (Architecture B2) — 2026-07-07 — Provider registry
+
+### Done
+
+- **Step 1 finding:** the price-only fetch (`routes.py`'s `_sync_fetch_price_data`) didn't go through `DataAdapter`/`YFinanceAdapter` at all — a second, parallel `yf.Ticker()` access path. It also discovers `asset_type` itself, from yfinance's `quoteType`, as a side effect of the fetch — the `/assets/{ticker}/price` endpoint takes only a ticker, no asset_type. This meant the task's suggested `asset_type -> provider list` registry shape had a chicken-and-egg problem: you can't pick a provider list by asset_type before any provider has run. Resolved (user-approved, asked via AskUserQuestion) with a small local ticker-syntax classifier (`infer_asset_type_from_ticker` — `^`=index, `=F`=commodity, `=X`=forex, `-USD`/`-USDT`/`-BTC`=crypto, else equity), mirroring the suffix-dispatch style `adapters/yfinance.py`'s `_SUFFIX_MAP` already uses. It's a routing hint only — the response's real `asset_type` still comes from whichever provider serves the quote — so misclassification is inert today (every bucket is `[yfinance]` anyway).
+- **`engine/app/adapters/base.py`:** added `QuoteProvider` Protocol (`name: str`, `async get_quote(ticker) -> Optional[dict]`) alongside the existing `DataAdapter` ABC — deliberately narrower, since real-time quote sources (Binance, Finnhub) never serve fundamentals/filings.
+- **`engine/app/adapters/yfinance.py`:** added `YFinanceQuoteProvider` (`name = "yfinance"`), wrapping the fetch logic moved from `routes.py`'s `_sync_fetch_price_data`, plus `_derive_contract_month`/`_FUTURES_MONTH_CODE` (yfinance-specific futures-month parsing). Dropped `_SHORT_MONTHS` — confirmed dead code, unused anywhere in the repo.
+- **`engine/app/services/provider_registry.py` (new):** `_REGISTRY: dict[str, list[QuoteProvider]]` keyed by asset_type, all five buckets pointing at the single `YFinanceQuoteProvider` instance today. `get_quote(ticker)` infers the bucket, tries providers in order, catches any exception (or `None` return) as a decline and moves to the next, stamps `result["source"] = provider.name` on the first success.
+- **`engine/app/services/price.py` (new):** cache orchestration for price, extracted from `routes.py` to match the `services/company.py`/`services/fundamentals.py` pattern from A2 (routes.py was the one endpoint still mixing HTTP+cache+fetch logic). `get_price(cache, ticker)` — cache hit returns immediately; miss calls `provider_registry.get_quote`, raises `PriceLookupError` on `None`/exception, builds `PriceOnlyData`, caches, returns.
+- **`engine/app/api/routes.py`:** `get_asset_price` is now a 4-line handler calling `price_service.get_price`; removed the ~120 lines of fetch/parsing logic (moved to `adapters/yfinance.py`) and now-unused imports (`PRICE_DATA_TTL_SECONDS`, `OHLCBar`).
+- Verified the fallback mechanism with a throwaway script (no pytest infra exists in this repo): monkeypatched the `equity` bucket to `[always-raising dummy, yfinance]`, confirmed `get_quote("AAPL")` skips the dummy and still returns `source: "yfinance"`.
+
+### Verified
+
+Hit `GET /api/v1/assets/{ticker}/price` for `AAPL` (equity), `BTC-USD` (crypto), `GC=F` (commodity, contract_month still parses to "Aug 2026"), `EURUSD=X` (forex) — all identical shape/data to pre-B2 behavior, `source: "yfinance"`, `is_delayed: true`, `freshness_label: "~15 min delayed"` (B1 unaffected, as expected — `source` didn't change). Repeat request for `AAPL` served from L1 cache in ~9ms. `py_compile` clean on all changed/new files; app imports without error. `cd web && npm run build` clean (frontend untouched).
+
+### Next
+
+B3: Binance crypto real-time provider. Gated behind K1 (geo-restriction curl-test from the deploy region) before prepending it to the `crypto` bucket in `provider_registry.py`.

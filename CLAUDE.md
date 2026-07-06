@@ -1,7 +1,7 @@
 # Tickr — CLAUDE.md
 
 **Stack:** Python 3.11 / FastAPI (engine) · Next.js 14 / TypeScript (web) · PostgreSQL
-**Phase:** 4a–4d complete, architecture migration Phase A complete (A1–A6, latency) — Phase B (truthfulness layer) in progress: B1 done (freshness/delay labeling), next B2 (provider registry), then Phase 5 (profiles/auth)
+**Phase:** 4a–4d complete, architecture migration Phase A complete (A1–A6, latency) — Phase B (truthfulness layer) in progress: B1 (freshness/delay labeling), B2 (provider registry) done, next B3 (Binance crypto, gated behind K1 geo kill-test), then Phase 5 (profiles/auth)
 **Session log:** PROGRESS.md · **Design rules:** ARCHITECTURE.md
 
 ---

@@ -421,3 +421,133 @@ class YFinanceAdapter(DataAdapter):
                 break
 
         return results
+
+
+_FUTURES_MONTH_CODE = {
+    "F": "Jan", "G": "Feb", "H": "Mar", "J": "Apr",
+    "K": "May", "M": "Jun", "N": "Jul", "Q": "Aug",
+    "U": "Sep", "V": "Oct", "X": "Nov", "Z": "Dec",
+}
+
+
+def _derive_contract_month(info: dict, base_ticker: str) -> Optional[str]:
+    import re
+    # 1. shortName often contains "Gold Aug 26" — extract "Mon YY/YYYY" pattern
+    short_name = info.get("shortName") or ""
+    m = re.search(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})', short_name)
+    if m:
+        month, yr = m.group(1), m.group(2)
+        year = int(yr)
+        if year < 100:
+            year += 2000
+        return f"{month} {year}"
+
+    # 2. underlyingSymbol like "GCQ26.CMX" — parse month code
+    underlying = info.get("underlyingSymbol") or ""
+    root = base_ticker.rstrip("=F").upper()
+    if underlying.upper().startswith(root):
+        suffix = underlying[len(root):]
+        suffix = suffix.split(".")[0]  # drop exchange suffix
+        if len(suffix) >= 2:
+            month_code = suffix[0].upper()
+            year_digits = suffix[1:]
+            month = _FUTURES_MONTH_CODE.get(month_code)
+            if month and year_digits.isdigit():
+                year = int(year_digits)
+                if year < 100:
+                    year += 2000
+                return f"{month} {year}"
+
+    # 3. expireDate as Unix timestamp
+    expire = info.get("expireDate")
+    if expire and isinstance(expire, (int, float)) and expire > 0:
+        dt = datetime.fromtimestamp(expire, tz=timezone.utc)
+        return dt.strftime("%b %Y")
+
+    return None
+
+
+class YFinanceQuoteProvider:
+    """Wraps yfinance's `.info` + `.history()` for the price-only endpoint.
+    Registered as the universal fallback for every asset class in the
+    provider registry (engine/app/services/provider_registry.py)."""
+
+    name = "yfinance"
+
+    async def get_quote(self, ticker: str) -> Optional[dict]:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._sync_get_quote, ticker)
+
+    def _sync_get_quote(self, ticker: str) -> dict:
+        t = yf.Ticker(ticker)
+        info = t.info
+
+        def g(k):
+            v = info.get(k)
+            if v is None:
+                return None
+            try:
+                f = float(v)
+                import math
+                return None if (math.isnan(f) or math.isinf(f)) else f
+            except (TypeError, ValueError):
+                return None
+
+        name = info.get("longName") or info.get("shortName") or ticker
+        currency = info.get("currency", "USD")
+        quote_type = info.get("quoteType", "")
+        asset_type_map = {
+            "CRYPTOCURRENCY": "crypto",
+            "CURRENCY": "forex",
+            "FUTURE": "commodity",
+            "INDEX": "index",
+        }
+        asset_type = asset_type_map.get(quote_type, "equity")
+
+        current_price = g("currentPrice") or g("regularMarketPrice") or g("ask")
+        change_24h = g("regularMarketChange")
+        change_24h_pct = g("regularMarketChangePercent")
+        high_52w = g("fiftyTwoWeekHigh")
+        low_52w = g("fiftyTwoWeekLow")
+        market_cap = g("marketCap")
+        volume_24h = g("volume24Hr") or g("regularMarketVolume")
+        circulating_supply = g("circulatingSupply")
+
+        contract_month = None
+        if asset_type == "commodity":
+            contract_month = _derive_contract_month(info, ticker)
+
+        hist = t.history(period="1y", interval="1d")
+        ohlc_bars = []
+        if hist is not None and not hist.empty:
+            for ts, row in hist.iterrows():
+                bar_date = ts.date() if hasattr(ts, "date") else ts
+                try:
+                    ohlc_bars.append({
+                        "date": bar_date,
+                        "open": float(row["Open"]),
+                        "high": float(row["High"]),
+                        "low": float(row["Low"]),
+                        "close": float(row["Close"]),
+                        "volume": float(row["Volume"]) if row["Volume"] else None,
+                    })
+                except (KeyError, TypeError, ValueError):
+                    continue
+
+        return {
+            "ticker": ticker.upper(),
+            "name": name,
+            "asset_type": asset_type,
+            "currency": currency,
+            "current_price": current_price,
+            "change_24h": change_24h,
+            "change_24h_pct": change_24h_pct,
+            "high_52w": high_52w,
+            "low_52w": low_52w,
+            "market_cap": market_cap,
+            "volume_24h": volume_24h,
+            "circulating_supply": circulating_supply,
+            "contract_month": contract_month,
+            "ohlc": ohlc_bars,
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+        }

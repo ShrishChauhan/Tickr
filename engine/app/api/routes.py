@@ -19,17 +19,18 @@ from ..cache.layered import LayeredCacheBackend
 from ..cache.ttl_config import (
     FILING_REF_TTL_SECONDS,
     AI_ANALYSIS_TTL_SECONDS,
-    PRICE_DATA_TTL_SECONDS,
 )
 from ..config import settings
-from ..schema import CompanyIdentity, NormalizedFundamentals, FilingReference, AnalysisResult, PriceOnlyData, OHLCBar, ScreenerRow
+from ..schema import CompanyIdentity, NormalizedFundamentals, FilingReference, AnalysisResult, PriceOnlyData, ScreenerRow
 from ..schema.fundamentals import Period
 from ..schema.filings import FilingType
 from ..services import company as company_service
 from ..services import fundamentals as fundamentals_service
+from ..services import price as price_service
 from ..services import screener as screener_service
 from ..services.company import CompanyLookupError, EXCHANGE_DISPLAY
 from ..services.fundamentals import FundamentalsLookupError
+from ..services.price import PriceLookupError
 from ..services.universes import load_universe, UnknownUniverseError
 
 router = APIRouter()
@@ -265,153 +266,12 @@ async def search_assets(q: str = Query(..., min_length=1, max_length=50)):
     return results
 
 
-_FUTURES_MONTH_CODE = {
-    "F": "Jan", "G": "Feb", "H": "Mar", "J": "Apr",
-    "K": "May", "M": "Jun", "N": "Jul", "Q": "Aug",
-    "U": "Sep", "V": "Oct", "X": "Nov", "Z": "Dec",
-}
-
-_SHORT_MONTHS = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
-
-
-def _derive_contract_month(info: dict, base_ticker: str) -> Optional[str]:
-    import re
-    # 1. shortName often contains "Gold Aug 26" — extract "Mon YY/YYYY" pattern
-    short_name = info.get("shortName") or ""
-    m = re.search(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})', short_name)
-    if m:
-        month, yr = m.group(1), m.group(2)
-        year = int(yr)
-        if year < 100:
-            year += 2000
-        return f"{month} {year}"
-
-    # 2. underlyingSymbol like "GCQ26.CMX" — parse month code
-    underlying = info.get("underlyingSymbol") or ""
-    root = base_ticker.rstrip("=F").upper()
-    if underlying.upper().startswith(root):
-        suffix = underlying[len(root):]
-        suffix = suffix.split(".")[0]  # drop exchange suffix
-        if len(suffix) >= 2:
-            month_code = suffix[0].upper()
-            year_digits = suffix[1:]
-            month = _FUTURES_MONTH_CODE.get(month_code)
-            if month and year_digits.isdigit():
-                year = int(year_digits)
-                if year < 100:
-                    year += 2000
-                return f"{month} {year}"
-
-    # 3. expireDate as Unix timestamp
-    expire = info.get("expireDate")
-    if expire and isinstance(expire, (int, float)) and expire > 0:
-        from datetime import datetime, timezone
-        dt = datetime.fromtimestamp(expire, tz=timezone.utc)
-        return dt.strftime("%b %Y")
-
-    return None
-
-
-def _sync_fetch_price_data(ticker: str) -> PriceOnlyData:
-    t = yf.Ticker(ticker)
-    info = t.info
-
-    def g(k):
-        v = info.get(k)
-        if v is None:
-            return None
-        try:
-            f = float(v)
-            import math
-            return None if (math.isnan(f) or math.isinf(f)) else f
-        except (TypeError, ValueError):
-            return None
-
-    name = info.get("longName") or info.get("shortName") or ticker
-    currency = info.get("currency", "USD")
-    quote_type = info.get("quoteType", "")
-    asset_type_map = {
-        "CRYPTOCURRENCY": "crypto",
-        "CURRENCY": "forex",
-        "FUTURE": "commodity",
-        "INDEX": "index",
-    }
-    asset_type = asset_type_map.get(quote_type, "equity")
-
-    current_price = g("currentPrice") or g("regularMarketPrice") or g("ask")
-    change_24h = g("regularMarketChange")
-    change_24h_pct = g("regularMarketChangePercent")
-    high_52w = g("fiftyTwoWeekHigh")
-    low_52w = g("fiftyTwoWeekLow")
-    market_cap = g("marketCap")
-    volume_24h = g("volume24Hr") or g("regularMarketVolume")
-    circulating_supply = g("circulatingSupply")
-
-    contract_month = None
-    if asset_type == "commodity":
-        contract_month = _derive_contract_month(info, ticker)
-
-    hist = t.history(period="1y", interval="1d")
-    ohlc_bars: list[OHLCBar] = []
-    if hist is not None and not hist.empty:
-        for ts, row in hist.iterrows():
-            bar_date = ts.date() if hasattr(ts, "date") else ts
-            try:
-                ohlc_bars.append(OHLCBar(
-                    date=bar_date,
-                    open=float(row["Open"]),
-                    high=float(row["High"]),
-                    low=float(row["Low"]),
-                    close=float(row["Close"]),
-                    volume=float(row["Volume"]) if row["Volume"] else None,
-                ))
-            except (KeyError, TypeError, ValueError):
-                continue
-
-    return PriceOnlyData(
-        ticker=ticker.upper(),
-        name=name,
-        asset_type=asset_type,
-        currency=currency,
-        current_price=current_price,
-        change_24h=change_24h,
-        change_24h_pct=change_24h_pct,
-        high_52w=high_52w,
-        low_52w=low_52w,
-        market_cap=market_cap,
-        volume_24h=volume_24h,
-        circulating_supply=circulating_supply,
-        contract_month=contract_month,
-        ohlc=ohlc_bars,
-        fetched_at=datetime.now(timezone.utc).isoformat(),
-        source="yfinance",
-    )
-
-
 @router.get("/assets/{ticker}/price", response_model=PriceOnlyData)
 async def get_asset_price(ticker: str):
-    ticker = ticker.upper()
-    cache_key = f"price:{ticker}"
-
-    raw = await _cache.get(cache_key)
-    if raw is not None:
-        return PriceOnlyData.model_validate(raw)
-
-    loop = asyncio.get_event_loop()
     try:
-        result = await loop.run_in_executor(None, _sync_fetch_price_data, ticker)
-    except Exception as e:
+        return await price_service.get_price(_cache, ticker)
+    except PriceLookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
-
-    await _cache.set(
-        cache_key,
-        result.model_dump(mode="json"),
-        PRICE_DATA_TTL_SECONDS,
-        data_type="price",
-        ticker=ticker,
-        source="yfinance",
-    )
-    return result
 
 
 @router.get("/screener/universes/{key}")
