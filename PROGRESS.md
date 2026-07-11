@@ -651,7 +651,7 @@ No new dependency added — username validation (`web/lib/validation/username.ts
 
 Full manual browser verification then passed end-to-end: signup with all fields (first/last name, username, email, password) → email verification received and confirmed → login by email works → logout + login by username works (this specifically exercises the Data API exposure fix, since username resolution depends on the RPCs being reachable) → fresh Google OAuth signup correctly redirected to `/complete-profile`, pre-filled, completed successfully → `/account` view/edit round-trips correctly (`display_name`/`bio` persist after save + reload).
 
-**Still open, untouched (out of scope — engine, not web):** `engine/app/config.py`'s `Settings` still doesn't declare the three Supabase env vars; engine still won't start.
+**Still open, untouched (out of scope — engine, not web):** `engine/app/config.py`'s `Settings` still doesn't declare the three Supabase env vars; engine still won't start. **Resolved in Session 22** — see below.
 
 ### Next
 
@@ -674,3 +674,15 @@ Known, deliberate simplification (per task spec, not an oversight): auto-derived
 ### Next
 
 P5.4 — Dashboard/personal terminal (Rung 2): rich single-pane-of-glass view of watchlist items with live prices, sparklines, and the "explain this" AI handrail introduced prominently for the first time.
+
+## Session 22 (fix) — 2026-07-12 — Engine crash: Settings rejected Supabase env vars
+
+Fixed the open item flagged since Session 18 and re-flagged in Sessions 19 and 20: the engine crashed at import time with a pydantic `ValidationError` on `next_public_supabase_url`, `next_public_supabase_anon_key`, and `supabase_service_role_key`. Root cause was exactly as previously diagnosed — root `.env` is shared between engine and web, `Settings` (pydantic-settings v2, plain-dict `model_config` in `engine/app/config.py`) never declared those three web-only fields, and pydantic-settings rejects unrecognized env vars by default.
+
+Fix was the one-line version, not the three-field version: added `"extra": "ignore"` to `Settings.model_config` rather than declaring the three Supabase keys as fields the engine has no use for. Comment left in place explaining why (`.env` is shared with the web app).
+
+**Verified:** `uvicorn app.main:app --app-dir engine` now logs `Application startup complete` with no `ValidationError`. `GET /health` → `200`. `GET /api/v1/search?q=AAPL` → real results (`Apple Inc.`, sector `Technology`, plus cross-listings), confirming this isn't just an import-time fix but that the engine is actually serving live data again.
+
+### Next
+
+P5.3's own verification is still pending (migration run + Data API exposure + manual browser walkthrough, per Session 21) — now unblocked since the engine can actually run alongside the web app. After that, P5.4.

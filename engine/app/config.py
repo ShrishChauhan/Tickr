@@ -20,7 +20,9 @@ class Settings(BaseSettings):
     # Finnhub — real-time US equity quotes (B4); blank disables, falls through to yfinance
     FINNHUB_API_KEY: str = ""
 
-    model_config = {"env_file": str(_ENV_FILE)}
+    # extra="ignore": .env is shared with the web app (Supabase vars etc.) —
+    # this service doesn't declare those fields and shouldn't reject them
+    model_config = {"env_file": str(_ENV_FILE), "extra": "ignore"}
 
 
 settings = Settings()
