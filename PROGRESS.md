@@ -604,3 +604,15 @@ Both free candidates are strictly worse than what Tickr already serves for forex
 ### Next
 
 Phase B (truthfulness layer) is now complete — B1–B6 all resolved (B5 deferred indefinitely on a hard bot-block, B6 concluded no upgrade exists, both documented decisions rather than gaps). Move to Phase 5 (profiles/auth) per ARCHITECTURE.md's roadmap, which needs a permanent user-data store (Supabase) separate from the disposable Neon TTL cache.
+
+## Session 18 (environment) — 2026-07-11 — Rebuilt dev environment for Python 3.12 after machine move
+
+Development moved to a new machine. `engine/.venv` had been recreated against Python 3.12.10 (`C:\Users\...\Python312`, correct — no stale 3.11 paths), but `pip install -e "engine[dev]"` had never actually completed: the venv had only `pip` installed. Root cause was `git` refusing to run inside the repo (`fatal: detected dubious ownership` — the repo directory is owned by a different Windows user SID than the current login, a standard side effect of a machine/profile move) which broke setuptools-scm's git introspection during the editable install. Fixed with `git config --global --add safe.directory` for this repo path, then the install completed clean (`pip check` passes). **`uvicorn` was already correctly declared as a main dependency in `pyproject.toml`, not a dev-only extra — the declaration was never the issue.**
+
+Node.js itself was not installed on the new machine at all (no `node.exe` anywhere, not on PATH, not in the registry, no WindowsApps/Volta/fnm) — `web/node_modules` (309 entries) had evidently survived via the raw directory copy, not an actual install on this machine. Installed Node.js LTS (v24.18.0) via `winget install OpenJS.NodeJS.LTS` (required a UAC prompt), then `npm install` in `web/` confirmed the existing lockfile-driven packages were already consistent.
+
+Separately (not machine-move related): `@supabase/supabase-js` and `@supabase/ssr` were never actually `npm install`-ed even on the old machine — `package.json`/`package-lock.json` had zero trace of them despite `web/lib/supabase/{client,server}.ts` and `web/proxy.ts` (Next 16's renamed middleware convention) already importing `@supabase/ssr`. This is incomplete P5.1 work, not something the move broke. Installed both packages now so `proxy.ts` resolves.
+
+**Unresolved, left for the user (out of scope for an environment-only fix):** `engine/app/config.py`'s `Settings` (pydantic-settings, default `extra="forbid"`) does not declare the three Supabase keys now present in root `.env` (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`), so `Settings()` throws a `ValidationError` at import time and the engine cannot start at all until `config.py` is updated to declare (or ignore) them. This is pre-existing incomplete P5.1 wiring, not a machine-move regression — confirmed by testing that the venv/dependency fix alone was insufficient to start uvicorn.
+
+Web server verified working end-to-end (`npm run dev` → `GET / 200`, including `proxy.ts` compiling). Engine verified NOT working — blocked on the `config.py` gap above.
