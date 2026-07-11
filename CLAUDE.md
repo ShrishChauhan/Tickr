@@ -1,7 +1,7 @@
 # Tickr — CLAUDE.md
 
 **Stack:** Python 3.11 / FastAPI (engine) · Next.js 14 / TypeScript (web) · PostgreSQL
-**Phase:** 4a–4d complete, architecture migration Phase A complete (A1–A6, latency) — Phase B (truthfulness layer) complete: B1 (freshness/delay labeling), B2 (provider registry), B3 (Coinbase crypto, chosen over Binance — see K1 in PROGRESS.md), B4 (Finnhub US equity real-time; backend done, no UI consumer yet — see Session 15 in PROGRESS.md) done, B5 (nsepython India) deferred indefinitely — NSE/Akamai returns a hard 403 bot-block, not intermittent breakage, see Session 16 — India equities stay on yfinance `.NS`/`.BO`, B6 (free FX source) evaluated and concluded no free source beats yfinance's existing minute-level forex data — Frankfurter/exchangerate-api are both daily-only, see Session 17 — Phase 5 (profiles/auth) in progress: P5.1 (auth foundation) and P5.2 (profiles table/RLS, full signup, username login — migration not yet run against live Supabase, see Session 20 in PROGRESS.md) done — next: run the P5.2 migration, then P5.3 (watchlists)
+**Phase:** 4a–4d complete, architecture migration Phase A complete (A1–A6, latency) — Phase B (truthfulness layer) complete: B1 (freshness/delay labeling), B2 (provider registry), B3 (Coinbase crypto, chosen over Binance — see K1 in PROGRESS.md), B4 (Finnhub US equity real-time; backend done, no UI consumer yet — see Session 15 in PROGRESS.md) done, B5 (nsepython India) deferred indefinitely — NSE/Akamai returns a hard 403 bot-block, not intermittent breakage, see Session 16 — India equities stay on yfinance `.NS`/`.BO`, B6 (free FX source) evaluated and concluded no free source beats yfinance's existing minute-level forex data — Frankfurter/exchangerate-api are both daily-only, see Session 17 — Phase 5 (profiles/auth) in progress: P5.1 (auth foundation) and P5.2 (profiles table/RLS, full signup, username login) done and fully verified against live Supabase — migration run, Data API exposure fixed, full manual browser flow passed, see Session 20 in PROGRESS.md — next: P5.3 (watchlists)
 **Session log:** PROGRESS.md · **Design rules:** ARCHITECTURE.md
 
 ---
@@ -110,6 +110,7 @@ over 20 entries.
 - Layered cache L1 is in-process — deleting a key from another script won't clear a running server's L1
 - nsepython hits Akamai 403 even on the NSE homepage — fingerprint block, not geo/rate-limit
 - Free FX APIs (Frankfurter, exchangerate-api) update once/day — yfinance forex is already minute-level
+- New Supabase tables/functions need manual Data API exposure — auto-expose is off by design (Settings → Data API)
 
 ---
 
