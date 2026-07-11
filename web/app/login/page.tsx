@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import AuthForm from "@/components/auth/AuthForm";
+import LoginForm from "@/components/auth/LoginForm";
 import styles from "./page.module.css";
 
 export default async function LoginPage() {
@@ -15,7 +15,7 @@ export default async function LoginPage() {
     <main className={styles.page}>
       <div className={styles.container}>
         <h1 className={styles.title}>Log in</h1>
-        <AuthForm mode="login" />
+        <LoginForm />
       </div>
     </main>
   );

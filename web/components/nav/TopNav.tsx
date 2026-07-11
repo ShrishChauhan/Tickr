@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, useAnimation } from "framer-motion";
 import TickrLogo from "@/components/logo/TickrLogo";
 import { useSupabaseUser } from "@/lib/hooks/useSupabaseUser";
+import { useProfile } from "@/lib/hooks/useProfile";
 import { createClient } from "@/lib/supabase/client";
 import styles from "./TopNav.module.css";
 
@@ -16,6 +17,8 @@ export default function TopNav({ instant }: TopNavProps) {
   const controls = useAnimation();
   const router = useRouter();
   const { user, loading } = useSupabaseUser();
+  const { profile } = useProfile(user?.id);
+  const displayLabel = profile?.display_name || profile?.username || user?.email;
 
   async function handleLogout() {
     const supabase = createClient();
@@ -56,7 +59,7 @@ export default function TopNav({ instant }: TopNavProps) {
         {!loading &&
           (user ? (
             <>
-              <span className={styles.userEmail}>{user.email}</span>
+              <span className={styles.userEmail}>{displayLabel}</span>
               <button className={styles.logoutButton} onClick={handleLogout}>
                 Log out
               </button>

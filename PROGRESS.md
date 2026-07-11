@@ -632,3 +632,25 @@ Verified locally: `npm run build` clean, `npm run dev` → `GET /login` 200, `GE
 ### Next
 
 P5.2 — profile data model, watchlists (Supabase tables + engine wiring), and the `engine/app/config.py` fix so the engine can actually start alongside the now-working web auth.
+
+## Session 20 (P5.2) — 2026-07-11 — Profile data model, full signup, username login
+
+Built the first real user-owned Supabase table (`profiles`) with RLS on top of P5.1's bare auth. New migration `supabase/migrations/0001_profiles.sql` (this repo's first `supabase/` directory) creates the table (`username` unique + format-checked, first/last/display name, bio, avatar_url, `profile_completed` boolean), three own-row RLS policies (select/insert/update), a `set_updated_at` trigger, and a `handle_new_user()` trigger on `auth.users` that auto-provisions a profile row for every new signup — email or Google OAuth — distinguishing the two by whether `raw_user_meta_data` carries a client-supplied `username` key. OAuth signups get a generated placeholder username (email local-part + collision-avoiding suffix) and `profile_completed = false`; email signups get their chosen username immediately and `profile_completed = true`.
+
+Username→email resolution for login (Supabase Auth only authenticates by email) uses two narrow `SECURITY DEFINER` SQL RPCs, `username_exists` and `get_email_for_username`, both granted `EXECUTE` to `anon`/`authenticated` and called directly from the browser — chosen over a service-role Next.js route specifically to keep `SUPABASE_SERVICE_ROLE_KEY` (declared since P5.1, still never wired into any client) out of app code entirely. This was a user-confirmed decision during planning, not just an implementation default — the blast radius of a compromised lookup is two single-purpose exact-match functions, not a general RLS-bypass credential in the server runtime.
+
+Split `AuthForm.tsx` into `LoginForm.tsx` (single "username or email" field, resolves via RPC before `signInWithPassword` when the input has no `@`) and `SignupForm.tsx` (first/last/username/email/password, on-blur username availability check, unified fallback message for the `signUp()` race case where GoTrue's generic 500 doesn't expose the underlying Postgres `23505`). Extracted `GoogleOAuthButton.tsx`, shared by both. New `/complete-profile` route (protected in `proxy.ts`) prompts OAuth users once to confirm/change their generated username — submitting unchanged still marks `profile_completed = true`, per spec's "soft prompt, not a wall." `auth/callback/route.ts` now checks `profile_completed` post-exchange and redirects there when false, preserving `next`.
+
+Reworked `/account` into a real view/edit profile page (`ProfileEditForm.tsx`, initials-avatar placeholder, no upload) and added `useProfile.ts` (mirrors `useSupabaseUser.ts`'s pattern) so `TopNav.tsx` shows `display_name`/`username` instead of the raw email.
+
+No new dependency added — username validation (`web/lib/validation/username.ts`) is hand-rolled regex per the repo's YAGNI convention; no `zod`/`react-hook-form` installed.
+
+**Verified:** `npm run build` and `eslint` (scoped to touched files) both clean. Note neither `npm` nor `node` were on this session's shell PATH despite Session 18 installing Node LTS — worked around by invoking `node.exe` and the `next`/`eslint` package entrypoints directly by full path; worth fixing so a plain `npm run build` works again next session. A full repo-wide `eslint .` also surfaced several pre-existing `react-hooks/set-state-in-effect` errors and one `no-html-link-for-pages` error in files this session didn't touch (`app/compare/page.tsx`, `AnalysisPanel.tsx`, `HeroSection.tsx`, `SearchBar.tsx`, `TickerLine.tsx`, `Typewriter.tsx`, and `TopNav.tsx`'s pre-existing nav `<a>` tags) — left alone as out of scope, flagged here so they aren't mistaken for new regressions next time lint runs repo-wide.
+
+**Not verified (needs the user's Supabase dashboard + browser):** the migration hasn't been run against the live project yet — no local Postgres/Supabase CLI existed to test it beforehand, so manual SQL-editor review was the only pre-check available. The full signup → confirm → login, OAuth → complete-profile, and username-login flows are unverified end-to-end until the user pastes `supabase/migrations/0001_profiles.sql` into the SQL editor and clicks through the checklist in the P5.2 plan.
+
+**Still open, untouched (out of scope — engine, not web):** `engine/app/config.py`'s `Settings` still doesn't declare the three Supabase env vars; engine still won't start.
+
+### Next
+
+Run the migration in Supabase, click through the verification checklist end-to-end, then P5.3 — watchlists (Rung 1 of the ladder), following the RLS pattern this session established.

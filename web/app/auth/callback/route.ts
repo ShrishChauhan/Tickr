@@ -8,8 +8,21 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
+    const { error, data } = await supabase.auth.exchangeCodeForSession(code);
+
+    if (!error && data.user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("profile_completed")
+        .eq("id", data.user.id)
+        .maybeSingle();
+
+      if (profile?.profile_completed === false) {
+        const redirectUrl = new URL("/complete-profile", origin);
+        redirectUrl.searchParams.set("next", next);
+        return NextResponse.redirect(redirectUrl);
+      }
+
       return NextResponse.redirect(`${origin}${next}`);
     }
   }
