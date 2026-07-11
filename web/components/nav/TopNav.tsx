@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion, useAnimation } from "framer-motion";
 import TickrLogo from "@/components/logo/TickrLogo";
+import { useSupabaseUser } from "@/lib/hooks/useSupabaseUser";
+import { createClient } from "@/lib/supabase/client";
 import styles from "./TopNav.module.css";
 
 interface TopNavProps {
@@ -11,6 +14,14 @@ interface TopNavProps {
 
 export default function TopNav({ instant }: TopNavProps) {
   const controls = useAnimation();
+  const router = useRouter();
+  const { user, loading } = useSupabaseUser();
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.refresh();
+  }
 
   useEffect(() => {
     if (instant) {
@@ -42,6 +53,19 @@ export default function TopNav({ instant }: TopNavProps) {
         <a href="/screener" className={styles.link}>
           Screener
         </a>
+        {!loading &&
+          (user ? (
+            <>
+              <span className={styles.userEmail}>{user.email}</span>
+              <button className={styles.logoutButton} onClick={handleLogout}>
+                Log out
+              </button>
+            </>
+          ) : (
+            <a href="/login" className={styles.link}>
+              Sign in
+            </a>
+          ))}
       </div>
     </motion.nav>
   );

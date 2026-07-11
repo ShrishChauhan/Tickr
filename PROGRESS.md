@@ -616,3 +616,19 @@ Separately (not machine-move related): `@supabase/supabase-js` and `@supabase/ss
 **Unresolved, left for the user (out of scope for an environment-only fix):** `engine/app/config.py`'s `Settings` (pydantic-settings, default `extra="forbid"`) does not declare the three Supabase keys now present in root `.env` (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`), so `Settings()` throws a `ValidationError` at import time and the engine cannot start at all until `config.py` is updated to declare (or ignore) them. This is pre-existing incomplete P5.1 wiring, not a machine-move regression — confirmed by testing that the venv/dependency fix alone was insufficient to start uvicorn.
 
 Web server verified working end-to-end (`npm run dev` → `GET / 200`, including `proxy.ts` compiling). Engine verified NOT working — blocked on the `config.py` gap above.
+
+## Session 19 (P5.1) — 2026-07-11 — Auth foundation: Supabase signup/login/logout, Google OAuth, protected routes
+
+Phase 1 (Supabase client/server helpers in `web/lib/supabase/`, `web/proxy.ts` session refresh) had landed on disk in a prior session but Phase 2 (the actual login/signup UI) never got built, and none of P5.1 was ever committed — `web/app/auth-smoketest/` (throwaway Phase 1 test UI) was still sitting untracked alongside it. This session verified the Phase 1 plumbing was intact, deleted the smoke-test, built Phase 2, and committed the whole thing as one unit.
+
+Built: `web/components/auth/AuthForm.tsx` (shared login/signup form, email/password + Google OAuth via `signInWithOAuth`), `web/app/login/` and `web/app/signup/` pages (server components, redirect home if already authenticated), `web/app/auth/callback/route.ts` (PKCE `exchangeCodeForSession`), `web/lib/hooks/useSupabaseUser.ts` (client hook wrapping `getUser` + `onAuthStateChange`), `web/app/account/page.tsx` (protected placeholder, P5.2 will add real profile data). Edited `web/components/nav/TopNav.tsx` to show sign-in/user-email+logout based on the hook, and `web/proxy.ts` to redirect unauthenticated `/account` requests to `/login`.
+
+Verified locally: `npm run build` clean, `npm run dev` → `GET /login` 200, `GET /signup` 200, `GET /account` 307 → `/login` (was a 404 before this session — the original symptom that revealed Phase 2 was missing).
+
+**Not verified (needs the user's browser + Supabase dashboard):** Google OAuth end-to-end and email-verification-link redirect both depend on the Supabase dashboard's URL Configuration listing `http://localhost:3000` and `http://localhost:3000/auth/callback` — a dashboard setting outside this repo, not something fixable in code.
+
+**Still open from Session 18, untouched here (out of scope — engine, not web):** `engine/app/config.py`'s `Settings` still doesn't declare the three Supabase env vars, so the engine won't start until that's fixed.
+
+### Next
+
+P5.2 — profile data model, watchlists (Supabase tables + engine wiring), and the `engine/app/config.py` fix so the engine can actually start alongside the now-working web auth.

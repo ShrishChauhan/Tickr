@@ -37,6 +37,30 @@
   color: var(--color-text-primary);
 }
 
+.userEmail {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.02em;
+}
+
+.logoutButton {
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.logoutButton:hover {
+  color: var(--color-text-primary);
+}
+
 @media (max-width: 640px) {
   .nav {
     padding: 14px 16px;
