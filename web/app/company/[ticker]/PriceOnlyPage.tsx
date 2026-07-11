@@ -17,6 +17,7 @@ import type { CompanyIdentity, PriceOnlyData, OHLCBar } from '@/lib/api';
 import { priceOnlyKey } from '@/lib/swrKeys';
 import { priceDataConfig } from '@/lib/swrConfig';
 import { relativeTime } from '@/lib/format';
+import AddToWatchlistButton from '@/components/company/AddToWatchlistButton';
 import pageStyles from './page.module.css';
 import styles from './PriceOnlyPage.module.css';
 
@@ -326,9 +327,17 @@ export default function PriceOnlyPage({ identity }: Props) {
         <div className={pageStyles.card}>
           <div className={pageStyles.cardHeader}>
             <span className={pageStyles.ticker}>{identity.ticker}</span>
-            <span className={pageStyles.exchangeBadge}>
-              {assetTypeLabel(identity.asset_type)}
-            </span>
+            <div className={pageStyles.headerActions}>
+              <span className={pageStyles.exchangeBadge}>
+                {assetTypeLabel(identity.asset_type)}
+              </span>
+              <AddToWatchlistButton
+                ticker={identity.ticker}
+                name={identity.name}
+                assetType={identity.asset_type}
+                market={identity.market}
+              />
+            </div>
           </div>
           <h1 className={pageStyles.name}>{identity.name}</h1>
 

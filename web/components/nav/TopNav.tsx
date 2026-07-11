@@ -59,6 +59,9 @@ export default function TopNav({ instant }: TopNavProps) {
         {!loading &&
           (user ? (
             <>
+              <a href="/watchlist" className={styles.link}>
+                Watchlist
+              </a>
               <span className={styles.userEmail}>{displayLabel}</span>
               <button className={styles.logoutButton} onClick={handleLogout}>
                 Log out

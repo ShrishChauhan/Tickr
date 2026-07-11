@@ -1,0 +1,178 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: var(--font-ui);
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 32px;
+  text-align: center;
+}
+
+.emptyLink {
+  color: var(--color-neon-green);
+  font-size: 0.875rem;
+}
+
+.filterRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filterPill {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.filterPill:hover {
+  color: var(--color-text-primary);
+}
+
+.filterPillActive {
+  color: var(--color-neon-green);
+  border-color: rgba(43, 255, 136, 0.4);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionTitle {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.itemList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.itemRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.itemMain {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 160px;
+}
+
+.itemTicker {
+  font-family: var(--font-data);
+  font-size: 0.9375rem;
+  letter-spacing: 0.04em;
+  color: var(--color-neon-green);
+}
+
+.itemName {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.itemTags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.tagPill {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.tagPillAuto {
+  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--color-border);
+}
+
+.tagPillCustom {
+  color: var(--color-neon-green);
+  background: rgba(43, 255, 136, 0.06);
+  border: 1px solid rgba(43, 255, 136, 0.3);
+}
+
+.tagInput {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--color-text-primary);
+  background: transparent;
+  border: 1px dashed var(--color-border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  width: 88px;
+  outline: none;
+  transition: border-color 0.15s ease, width 0.15s ease;
+}
+
+.tagInput:focus {
+  width: 140px;
+  border-color: rgba(43, 255, 136, 0.4);
+  border-style: solid;
+}
+
+.tagInput::placeholder {
+  color: var(--color-text-muted);
+}
+
+.removeButton {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.removeButton:hover:not(:disabled) {
+  color: var(--color-neon-red);
+  border-color: rgba(255, 64, 96, 0.4);
+}
+
+.removeButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

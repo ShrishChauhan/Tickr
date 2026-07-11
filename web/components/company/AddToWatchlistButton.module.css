@@ -1,0 +1,67 @@
+.wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.button {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--color-neon-green);
+  color: var(--color-neon-green);
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.watchingBadge {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-neon-green);
+  border: 1px solid var(--color-neon-green);
+  border-radius: 4px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.signInPrompt {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+
+.signInPrompt:hover {
+  color: var(--color-text-primary);
+}
+
+.error {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--color-neon-red);
+}

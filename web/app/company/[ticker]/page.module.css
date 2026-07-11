@@ -57,6 +57,12 @@
   gap: 12px;
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .ticker {
   font-family: var(--font-data);
   font-size: 1.25rem;

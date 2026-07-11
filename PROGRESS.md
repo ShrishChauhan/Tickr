@@ -656,3 +656,21 @@ Full manual browser verification then passed end-to-end: signup with all fields 
 ### Next
 
 P5.3 — watchlists (Rung 1 of the ladder), following the RLS pattern this session established.
+
+## Session 21 (P5.3) — 2026-07-12 — Watchlists (Rung 1)
+
+Built the first genuinely many-to-many schema in the project on top of P5.2's own-row RLS pattern. New migration `supabase/migrations/0002_watchlists.sql` creates `watchlist_items` (one row per tracked ticker per user, unique `(user_id, ticker)`), `tags` (per-user vocabulary, unique `(user_id, lower(name))`, `is_auto_derived` flag), and `watchlist_item_tags` (junction, PK `(item_id, tag_id)`, no `user_id` column of its own). The junction table's RLS policies are EXISTS-subqueries against `watchlist_items`/`tags` rather than a direct `auth.uid() = user_id` check, since ownership is only implied through the parents — this was the specifically new pattern this session needed to get right rather than approximate. **REMINDER LOGGED (again): the user must expose all three new tables via Supabase → Settings → Data API before testing — same gotcha as P5.2, now documented twice.**
+
+Investigation before writing the migration surfaced a real data gap: `CompanyIdentity` (from `/companies/{ticker}`, what `EquityPage` actually receives) has no `sector` field — sector only exists on `SearchResult` from `/search` (`engine/app/api/routes.py:251`). Rather than touch the engine or over-fetch on every page load, `addToWatchlist()` (new `web/lib/watchlist.ts`) calls `fetchSearch(ticker)` once, only at add-time, purely to recover a sector tag when available; if the ticker isn't found or has no sector, the tag is skipped gracefully. Also scoped the market/country auto-tag (e.g. "US Stocks", "Indian Stocks") to `asset_type === 'equity'` only — `CompanyIdentity.market` is populated for every asset type via a currency→market mapping, so applying it unconditionally would have mislabeled e.g. a USD-priced crypto asset as "US Stocks."
+
+Built: `web/lib/watchlist.ts` (market label map, asset-type group labels, `getOrCreateTag` — select-then-insert-then-recover-on-23505, shared by both auto-tagging and the custom-tag UI — and `addToWatchlist`), `web/components/company/AddToWatchlistButton.tsx` (shared by `EquityPage.tsx` and `PriceOnlyPage.tsx`, states idle/loading/watching/error, "sign in to track" prompt when logged out, duplicate-add treated as success not error), `web/app/watchlist/page.tsx` + `WatchlistView.tsx` (server component does the auth-redirect + nested-select fetch mirroring `account/page.tsx`; client component handles OR-semantics tag-pill filtering, remove, and inline custom-tag-add, all via `router.refresh()` after mutations — same pattern as `ProfileEditForm.tsx`, no hand-rolled cache sync). Extended `proxy.ts`'s protected paths and added a conditional "Watchlist" link to `TopNav.tsx`.
+
+Known, deliberate simplification (per task spec, not an oversight): auto-derived tags are captured once at add-time and never resynced if the underlying market/sector data changes later.
+
+**Verified:** `npm run build` clean (`/watchlist` correctly compiled as a protected dynamic route), `git status` on `engine/` shows zero changes. `eslint` scoped check on every new/edited file clean — a repo-wide `npm run lint` still surfaces the same pre-existing `react-hooks/set-state-in-effect` errors and `TopNav.tsx`'s pre-existing `<a href="/">` warning noted in Session 20; none are new. `npm`/`node` were again not on this session's shell PATH (`C:\Program Files\nodejs` not exported) despite being installed since Session 18 — worked around with an explicit `PATH` export instead of full-path invocation this time; still worth actually fixing the shell profile so this stops recurring.
+
+**Not yet verified (needs the user's Supabase dashboard + browser):** migration hasn't been run against live Supabase, the three tables haven't been Data-API-exposed, and no manual add/remove/tag/filter/logout-redirect walkthrough has happened yet — all pending per this project's "verify against live Supabase before calling a session done" convention (see P5.2).
+
+### Next
+
+P5.4 — Dashboard/personal terminal (Rung 2): rich single-pane-of-glass view of watchlist items with live prices, sparklines, and the "explain this" AI handrail introduced prominently for the first time.
