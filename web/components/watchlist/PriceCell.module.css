@@ -1,0 +1,63 @@
+.cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 200px;
+}
+
+.priceCol {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 84px;
+}
+
+.price {
+  font-family: var(--font-data);
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+}
+
+.change {
+  font-family: var(--font-data);
+  font-size: 0.75rem;
+}
+
+.changeUp {
+  color: var(--color-data-green);
+}
+
+.changeDown {
+  color: var(--color-data-red);
+}
+
+.muted {
+  font-family: var(--font-data);
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.skeletonPrice {
+  display: block;
+  width: 64px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.skeletonSpark {
+  display: block;
+  width: 96px;
+  height: 28px;
+  border-radius: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}

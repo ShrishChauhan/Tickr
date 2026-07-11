@@ -45,3 +45,22 @@ export function fmtMultiple(v: number | null | undefined): string {
   if (v == null) return '—';
   return `${v.toFixed(2)}x`;
 }
+
+export function fmtPrice(value: number | null, currency: string): string {
+  if (value === null) return '—';
+  const prefix = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : '';
+  const suffix = prefix ? '' : ` ${currency}`;
+  if (Math.abs(value) >= 1_000_000_000_000) return `${prefix}${(value / 1_000_000_000_000).toFixed(2)}T${suffix}`;
+  if (Math.abs(value) >= 1_000_000_000) return `${prefix}${(value / 1_000_000_000).toFixed(2)}B${suffix}`;
+  if (Math.abs(value) >= 1_000_000) return `${prefix}${(value / 1_000_000).toFixed(2)}M${suffix}`;
+  return `${prefix}${value.toLocaleString(undefined, { maximumFractionDigits: 4 })}${suffix}`;
+}
+
+// NOTE: unlike fmtPct() above (which multiplies decimal fractions by 100 for margins/ratios),
+// this assumes the input is already a percentage value (e.g. 2.35 -> "+2.35%"), matching the
+// engine's change_24h_pct field. Do not use fmtPct() for that field.
+export function fmtChangePct(value: number | null): string {
+  if (value === null) return '—';
+  const sign = value >= 0 ? '+' : '';
+  return `${sign}${value.toFixed(2)}%`;
+}

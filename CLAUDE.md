@@ -1,7 +1,7 @@
 # Tickr — CLAUDE.md
 
-**Stack:** Python 3.11 / FastAPI (engine) · Next.js 14 / TypeScript (web) · PostgreSQL
-**Phase:** 4a–4d complete, architecture migration Phase A complete (A1–A6, latency) — Phase B (truthfulness layer) complete: B1 (freshness/delay labeling), B2 (provider registry), B3 (Coinbase crypto, chosen over Binance — see K1 in PROGRESS.md), B4 (Finnhub US equity real-time; backend done, no UI consumer yet — see Session 15 in PROGRESS.md) done, B5 (nsepython India) deferred indefinitely — NSE/Akamai returns a hard 403 bot-block, not intermittent breakage, see Session 16 — India equities stay on yfinance `.NS`/`.BO`, B6 (free FX source) evaluated and concluded no free source beats yfinance's existing minute-level forex data — Frankfurter/exchangerate-api are both daily-only, see Session 17 — Phase 5 (profiles/auth/watchlists) in progress: P5.1 (auth foundation) and P5.2 (profiles table/RLS, full signup, username login) done and fully verified against live Supabase, see Session 20 in PROGRESS.md — P5.3 (watchlists: items/tags/junction table with RLS, add-to-watchlist with auto-tagging, `/watchlist` list+filter view) built, migration + manual Supabase/browser verification still pending, see Session 21 in PROGRESS.md — next: finish P5.3 verification, then P5.4 (dashboard/personal terminal)
+**Stack:** Python 3.11 / FastAPI (engine) · Next.js 14 / TypeScript (web, but installed `next` is actually 16.2.9 — see Session 23 in PROGRESS.md, this line is stale) · PostgreSQL
+**Phase:** 4a–4d complete, architecture migration Phase A complete (A1–A6, latency) — Phase B (truthfulness layer) complete: B1 (freshness/delay labeling), B2 (provider registry), B3 (Coinbase crypto, chosen over Binance — see K1 in PROGRESS.md), B4 (Finnhub US equity real-time; backend done, no UI consumer yet — see Session 15 in PROGRESS.md) done, B5 (nsepython India) deferred indefinitely — NSE/Akamai returns a hard 403 bot-block, not intermittent breakage, see Session 16 — India equities stay on yfinance `.NS`/`.BO`, B6 (free FX source) evaluated and concluded no free source beats yfinance's existing minute-level forex data — Frankfurter/exchangerate-api are both daily-only, see Session 17 — Phase 5 (profiles/auth/watchlists) in progress: P5.1 (auth foundation) and P5.2 (profiles table/RLS, full signup, username login) done and fully verified against live Supabase, see Session 20 in PROGRESS.md — P5.3 (watchlists: items/tags/junction table with RLS, add-to-watchlist with auto-tagging, `/watchlist` list+filter view) built, migration + manual Supabase/browser verification still pending, see Session 21 in PROGRESS.md — P5.4 Part A (dashboard: live price/change%/sparkline per watchlist item + sort controls) built frontend-only, equity sparklines gracefully degraded pending a deferred engine fix (Finnhub returns no OHLC — see Session 23), browser verification pending user login — next: user browser-verifies P5.4 Part A, then P5.4-B (the "explain this" AI layer)
 **Session log:** PROGRESS.md · **Design rules:** ARCHITECTURE.md
 
 ---
@@ -112,6 +112,8 @@ over 20 entries.
 - Free FX APIs (Frankfurter, exchangerate-api) update once/day — yfinance forex is already minute-level
 - New Supabase tables/functions need manual Data API exposure — auto-expose is off by design (Settings → Data API)
 - CompanyIdentity (/companies/{ticker}) has no sector field — only /search results do
+- Finnhub adapter never returns OHLC bars — registry's first-success-wins skips yfinance's fallback
+- Real-time price TTL (30s) is too short to piggyback a slow OHLC fetch onto — needs its own cache
 
 ---
 

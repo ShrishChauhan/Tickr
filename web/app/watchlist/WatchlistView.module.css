@@ -23,6 +23,32 @@
   font-size: 0.875rem;
 }
 
+.sortBar {
+  display: flex;
+  gap: 4px;
+}
+
+.sortBtn {
+  font-family: var(--font-data);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.sortBtn:hover {
+  color: var(--color-text-primary);
+}
+
+.sortBtnActive {
+  color: var(--color-neon-green);
+  border-color: rgba(43, 255, 136, 0.3);
+}
+
 .filterRow {
   display: flex;
   flex-wrap: wrap;

@@ -14,3 +14,9 @@ export const priceOnlyKey = (ticker: string) => `/api/v1/assets/${ticker.trim().
 export const screenerKey = (universeKey: string) => `/api/v1/screener/${universeKey}/rows`;
 
 export const searchKey = (query: string) => `/api/v1/search?q=${query.trim()}`;
+
+// Internal cache key for the watchlist dashboard's batched price fetch. Not a real API path —
+// namespaced with a `watchlist-prices:` prefix so it can never collide with priceOnlyKey's
+// per-ticker `/api/v1/assets/.../price` keys in SWR's global cache.
+export const watchlistPricesKey = (sortedUpperTickers: string[]) =>
+  `watchlist-prices:${sortedUpperTickers.join(',')}`;
