@@ -915,3 +915,79 @@ Decide on the typeahead lint-debt follow-up (own session, own manual test).
 Otherwise, either "add screener results to watchlist" (one-click add from a
 screener row, still pending from 6.1) or start Phase 6.3 (options calculator) per
 the roadmap.
+
+## Session 28 (P6.3 investigation) — Options calculator: data feasibility + plan — 2026-07-12
+
+Investigation-first session, no code shipped, before committing to building an
+options calculator: does yfinance actually carry usable options-chain data,
+and can the long-deferred spot-vs-futures modeling question finally be
+resolved instead of compromised on.
+
+### Key finding: real options data, but scoped to US equities/ETFs only
+
+Live-tested `yf.Ticker(t).options` + `.option_chain(exp)` across 8 tickers
+spanning every asset class Tickr supports. AAPL, MSFT, TSLA (21–23
+expirations, tight bid/ask, plausible IV, real volume/OI in the 1k–47k range)
+and SPY (31 expirations) all came back well-formed. Every non-US equity
+tested — SAP.DE, 7203.T, HSBA.L, VALE3.SA, 4 separate markets — and both
+commodity futures (GC=F, CL=F) and crypto (BTC-USD) returned **zero**
+expirations. Not a one-ticker fluke or intermittent gap: yfinance simply does
+not carry options chains outside US-listed equities and ETFs.
+
+### Spot-vs-futures question: resolved by the data, not a compromise
+
+This modeling question has been open since early in the project — whether
+Black-Scholes should treat the underlying as spot, futures, or an ETF proxy.
+It turned out not to need a decision for v1: futures/commodity tickers have
+no options chain to price against at all (confirmed above), so the ambiguity
+never arises for what's actually in scope. For US equities/ETFs, the
+underlying unambiguously is the ticker's spot share price. The question stays
+explicitly open for commodities, should a real futures-options source get
+added later — that would need a Black-76 variant (forward price, no dividend
+term) and its own adapter path, not a retrofit of this one.
+
+### Two scope decisions confirmed with the user this session
+
+1. v1 covers US equities/ETFs only — any other ticker shows a clear "options
+   data not available" empty state, not a silent failure or workaround.
+2. Greek explanations are static templates, not AI-generated — unlike
+   P5.4-B's price-move narrative, a Greek's meaning is fixed math and doesn't
+   need an LLM to describe correctly.
+
+### Unit landmine caught before it became a bug
+
+`dividendYield` in `.info` is percent-shaped (0.34 meaning "0.34%"), not a
+decimal fraction — dividing by 100 would have been silently wrong.
+`dividendRate / price` agrees with `trailingAnnualDividendYield` to 3 decimal
+places and is what the pricing math will use. Logged in CLAUDE.md's
+lessons-learned.
+
+### Plan approved, implementation chunked into 3 sessions
+
+Full plan: `C:\Users\DELL\.claude\plans\lazy-sparking-frog.md`. Given the
+surface area (new adapters, a new service, new schema, 3 endpoints, a new
+frontend route), this is being built across 3 sessions rather than one pass:
+**A** — pure Black-Scholes math + tests, nothing else touched until proven
+correct; **B** — engine wiring (adapters, service orchestration, endpoints);
+**C** — frontend (`/options` route).
+
+### Session A — Black-Scholes math + tests
+
+- `engine/app/services/black_scholes.py` — pure functions, no cache/adapter/
+  network dependency: `year_fraction`, `_d1`/`_d2`, `call_price`/`put_price`,
+  and the six Greeks (`delta_call`/`delta_put`, `gamma`, `theta_call`/
+  `theta_put`, `vega`, `rho_call`/`rho_put`). Normal CDF via `math.erf`
+  (stdlib) — no scipy, no numpy, per CLAUDE.md's YAGNI ordering.
+- `engine/tests/test_black_scholes.py` — reference value against Hull's
+  textbook example (S=42, K=40, r=10%, σ=20%, T=0.5, q=0 → call≈4.76,
+  put≈0.81), put-call parity across 5 varied input combinations, boundary
+  checks (deep-ITM call → intrinsic as σ→0, delta bounds, non-negative
+  gamma/vega across a strike sweep), and a `year_fraction` unit test against
+  a known date pair using the 365.25-day convention.
+- All tests pass — see test run output in the same turn as this entry.
+
+### Next
+
+Session B: engine wiring — `YFinanceOptionsProvider` adapter, risk-free-rate
+helper, `services/options.py` orchestration, `schema/options.py`, the 3
+`/options/*` endpoints, TTL config additions. No frontend until Session C.
