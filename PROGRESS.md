@@ -855,3 +855,63 @@ the same JSONB-vs-typed reasoning.
 
 "Add screener results to watchlist" (one-click add from a screener row), then 6.2
 (comparison sets — save/load a comparison, following this session's pattern).
+
+## Session 27 (P6.2) — Saved comparison sets — 2026-07-12
+
+Applied Session 26's pattern to `/compare` rather than re-deriving it. Both open
+questions from last session — direct-Supabase vs. engine, JSONB vs. typed columns —
+were already settled there and just needed applying, not re-litigating: almost no
+new architecture reasoning this session, which is the point of having set the
+precedent.
+
+Investigation of `/compare/page.tsx` confirmed a saved set only needs an ordered
+`tickers: string[]` — colors and metrics are derived from array position / global
+config, never stored per-ticker, so there's nothing else to persist.
+
+### Done
+
+- `supabase/migrations/0004_saved_comparisons.sql` — `saved_comparisons` (user_id,
+  name, `tickers jsonb`, `unique(user_id, name)`), RLS: select/insert/delete own,
+  no update policy — same shape as `saved_screens`.
+- `web/lib/savedComparisons.ts` — `listSavedComparisons`/`saveComparison`/
+  `deleteSavedComparison`, `23505` duplicate-name handling, same as `savedScreens.ts`.
+- `web/components/compare/SavedComparisonsPanel.tsx` + `.module.css` — save/list/
+  load/delete panel, gated client-side on `useSupabaseUser()`, save disabled below
+  2 tickers (mirrors the page's own `canShowCharts` gate).
+- `web/app/compare/page.tsx` — wired the panel in; added `loadComparison()` (didn't
+  exist before), which clears current state and replays `addTicker()` per saved
+  ticker — reuses the exact load path the `?tickers=` deep link already used,
+  rather than a new bulk-set path, so the 5-ticker cap stays enforced by
+  construction.
+
+### One real finding: pre-existing lint debt, deliberately not touched
+
+The scoped `eslint` pass surfaced 2 pre-existing `react-hooks/set-state-in-effect`
+violations in `compare/page.tsx`'s typeahead debounce (lines 126, 135) — in code
+this session never touched. An unrequested refactor was attempted (folding the
+dropdown-reopen into the debounce timeout, moving the query-cleared reset into
+`onChange`) and then reverted on request before commit, since it wasn't asked for
+and deserves its own manual typeahead test rather than riding in on this feature's
+diff. The violations are left in place, flagged as a known, separate item.
+
+### Verified
+
+Signed in on `/compare`: built a 2-ticker set, confirmed Save stayed disabled below
+2 and enabled at 2; saved under a name, confirmed it appeared in the list; built a
+different set on top of it and clicked Load, confirmed the saved set *replaced*
+the in-progress one rather than merging; attempted a duplicate name and got the
+inline error instead of a raw Postgres error; deleted a saved comparison and
+confirmed it disappeared. Signed out and confirmed `/compare` stayed fully usable
+with the panel collapsed to "Sign in to save comparisons." Opened a second user
+session and confirmed cross-user RLS isolation — couldn't see or delete the first
+user's saved comparisons. `tsc --noEmit` and a scoped `eslint` pass (the 4
+originally-intended files) both clean; `git status`/`git diff --stat` reviewed
+before commit and matched the expected change set exactly, with the reverted
+debounce refactor confirmed absent.
+
+### Next
+
+Decide on the typeahead lint-debt follow-up (own session, own manual test).
+Otherwise, either "add screener results to watchlist" (one-click add from a
+screener row, still pending from 6.1) or start Phase 6.3 (options calculator) per
+the roadmap.
