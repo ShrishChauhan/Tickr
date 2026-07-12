@@ -6,6 +6,17 @@
 
 ---
 
+## Commit conventions (strict)
+
+- NEVER add `Co-Authored-By: Claude` or any AI attribution trailer to any commit.
+- NEVER add a `Claude-Session:` link or any Anthropic/Claude reference to a commit message.
+- All commits are authored solely as the user (Shrish Chauhan). No exceptions.
+- This applies even if a commit tool/CLI defaults to adding such trailers automatically —
+  strip them before finalizing the commit.
+- This rule was violated once already (see PROGRESS.md) — treat it as non-negotiable.
+
+---
+
 ## Directory map
 
 | Path | Purpose |
