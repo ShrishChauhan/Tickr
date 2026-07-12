@@ -8,6 +8,7 @@ import { screenerKey } from '@/lib/swrKeys';
 import { screenerConfig } from '@/lib/swrConfig';
 import ScreenerTable from '@/components/screener/ScreenerTable';
 import type { ScreenerRow, SortKey, SortDir } from '@/components/screener/ScreenerTable';
+import SavedScreensPanel from '@/components/screener/SavedScreensPanel';
 import styles from './page.module.css';
 
 const UNIVERSES = [
@@ -21,6 +22,8 @@ type UniverseKey = (typeof UNIVERSES)[number]['key'];
 
 // No FCF filter — the batch screener endpoint's lite fetch has no .info equivalent for free cash flow.
 interface Filters {
+  // Index signature so this structurally satisfies Record<string, string> (e.g. SavedScreensPanel's props) without a cast.
+  [key: string]: string;
   marketCapMin: string;
   marketCapMax: string;
   peMin: string;
@@ -65,6 +68,15 @@ export default function ScreenerPage() {
       setSortKey(key);
       setSortDir('desc');
     }
+  }
+
+  function handleLoadScreen(loadedUniverseKey: string, loadedFilters: Record<string, string>) {
+    if (UNIVERSES.some(u => u.key === loadedUniverseKey)) {
+      setUniverseKey(loadedUniverseKey as UniverseKey);
+    }
+    setFilters({ ...EMPTY_FILTERS, ...loadedFilters } as Filters);
+    setSortKey('market_cap');
+    setSortDir('desc');
   }
 
   const sym = currencySymbolForUniverse(universeKey);
@@ -143,6 +155,8 @@ export default function ScreenerPage() {
             Clear filters
           </button>
         </div>
+
+        <SavedScreensPanel universeKey={universeKey} filters={filters} onLoad={handleLoadScreen} />
 
         {/* Keyed on universeKey so switching tabs remounts with fresh state
             instead of manually resetting fetched data inside an effect. */}

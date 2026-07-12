@@ -31,6 +31,8 @@
 | `web/` | Next.js frontend (thin client — no business logic) |
 | `docs/` | Extended reference docs linked from this file |
 
+User-data CRUD (watchlists, profiles, saved_screens) goes through direct Supabase access from Next.js with RLS enforcement, NOT through the FastAPI engine — the engine is for stateless/computational data only (screener, company data, price feeds). Supersedes any earlier statement that no business logic lives outside `engine/`.
+
 ---
 
 ## Running

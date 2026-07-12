@@ -20,3 +20,7 @@ export const searchKey = (query: string) => `/api/v1/search?q=${query.trim()}`;
 // per-ticker `/api/v1/assets/.../price` keys in SWR's global cache.
 export const watchlistPricesKey = (sortedUpperTickers: string[]) =>
   `watchlist-prices:${sortedUpperTickers.join(',')}`;
+
+// Internal cache key for a user's saved screener screens. Not a real API path — fetched
+// directly from Supabase, not the engine — namespaced so it can't collide with any real key.
+export const savedScreensKey = (userId: string) => `saved-screens:${userId}`;
