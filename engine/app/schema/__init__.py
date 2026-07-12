@@ -6,6 +6,7 @@ from .analysis import AnalysisResult
 from .price_only import PriceOnlyData, OHLCBar
 from .screener import ScreenerFields, ScreenerRow
 from .explain import ExplainRequest, ExplainResult
+from .options import OptionContract, OptionChain, OptionExpirations, GreeksInputs, GreeksExplanations, GreeksResult
 
 __all__ = [
     "CompanyIdentity", "Market", "Exchange", "Currency",
@@ -15,4 +16,5 @@ __all__ = [
     "PriceOnlyData", "OHLCBar",
     "ScreenerFields", "ScreenerRow",
     "ExplainRequest", "ExplainResult",
+    "OptionContract", "OptionChain", "OptionExpirations", "GreeksInputs", "GreeksExplanations", "GreeksResult",
 ]

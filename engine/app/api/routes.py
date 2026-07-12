@@ -26,14 +26,17 @@ from ..schema import CompanyIdentity, NormalizedFundamentals, FilingReference, A
 from ..schema.fundamentals import Period
 from ..schema.filings import FilingType
 from ..schema.explain import ExplainRequest, ExplainResult
+from ..schema.options import OptionExpirations, OptionChain, GreeksResult
 from ..services import company as company_service
 from ..services import fundamentals as fundamentals_service
 from ..services import price as price_service
 from ..services import screener as screener_service
 from ..services import explain as explain_service
+from ..services import options as options_service
 from ..services.company import CompanyLookupError, EXCHANGE_DISPLAY
 from ..services.fundamentals import FundamentalsLookupError
 from ..services.price import PriceLookupError
+from ..services.options import OptionsLookupError
 from ..services.universes import load_universe, UnknownUniverseError
 
 router = APIRouter()
@@ -302,4 +305,34 @@ async def get_screener_rows(universe_key: str):
     try:
         return await screener_service.get_screener_rows(adapter, _cache, universe_key, "yfinance")
     except UnknownUniverseError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/options/{ticker}/expirations", response_model=OptionExpirations)
+async def get_option_expirations(ticker: str):
+    return await options_service.get_expirations(_cache, ticker)
+
+
+@router.get("/options/{ticker}/chain", response_model=OptionChain)
+async def get_option_chain(
+    ticker: str,
+    expiration: str = Query(..., description="Expiration date, YYYY-MM-DD"),
+):
+    try:
+        return await options_service.get_chain(_cache, ticker, expiration)
+    except OptionsLookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/options/{ticker}/calculate", response_model=GreeksResult)
+async def calculate_option_greeks(
+    ticker: str,
+    expiration: str = Query(..., description="Expiration date, YYYY-MM-DD"),
+    strike: float = Query(...),
+    type: str = Query(..., description="call or put"),
+    iv: Optional[float] = Query(default=None, description="Override implied volatility (decimal, e.g. 0.25)"),
+):
+    try:
+        return await options_service.calculate(_cache, ticker, expiration, strike, type, iv)
+    except OptionsLookupError as e:
         raise HTTPException(status_code=404, detail=str(e))

@@ -564,3 +564,82 @@ class YFinanceQuoteProvider:
             "ohlc": ohlc_bars,
             "fetched_at": datetime.now(timezone.utc).isoformat(),
         }
+
+
+def _sync_get_expirations(ticker: str) -> list[str]:
+    return list(yf.Ticker(ticker).options)
+
+
+def _safe_iso(val) -> Optional[str]:
+    """Convert a pandas Timestamp to an ISO 8601 string, None for NaT/None.
+    yfinance's lastTradeDate column is already tz-aware UTC (datetime64[s, UTC])."""
+    if val is None or pd.isna(val):
+        return None
+    return val.isoformat()
+
+
+def _sync_get_chain(ticker: str, expiration: str) -> dict:
+    chain = yf.Ticker(ticker).option_chain(expiration)
+
+    def _rows(df: pd.DataFrame) -> list[dict]:
+        return [
+            {
+                "strike": _safe(row.get("strike")),
+                "bid": _safe(row.get("bid")),
+                "ask": _safe(row.get("ask")),
+                "last_price": _safe(row.get("lastPrice")),
+                "volume": _safe(row.get("volume")),
+                "open_interest": _safe(row.get("openInterest")),
+                "implied_volatility": _safe(row.get("impliedVolatility")),
+                # yfinance derives impliedVolatility from this contract's last
+                # trade, not the live book — this timestamp is what actually
+                # explains IV staleness for thinly-traded strikes.
+                "last_trade_date": _safe_iso(row.get("lastTradeDate")),
+            }
+            for _, row in df.iterrows()
+        ]
+
+    return {
+        "calls": _rows(chain.calls),
+        "puts": _rows(chain.puts),
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _sync_get_risk_free_rate() -> float:
+    # ^IRX regularMarketPrice is percent-shaped (3.70 meaning 3.70%) — confirmed
+    # live, see PROGRESS.md Session 28 — divide by 100 before returning.
+    pct = _safe(yf.Ticker("^IRX").info.get("regularMarketPrice"))
+    return (pct / 100.0) if pct is not None else 0.0
+
+
+def _sync_get_dividend_rate(ticker: str) -> Optional[float]:
+    return _safe(yf.Ticker(ticker).info.get("dividendRate"))
+
+
+class YFinanceOptionsProvider:
+    """Options chains + risk-free rate for the Black-Scholes calculator (Phase
+    6.3). US equities/ETFs only — yfinance carries zero expirations for
+    commodities, crypto, and non-US equities (confirmed live against 4 non-US
+    markets + commodities/crypto, see PROGRESS.md Session 28)."""
+
+    name = "yfinance"
+
+    async def get_expirations(self, ticker: str) -> list[str]:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _sync_get_expirations, ticker)
+
+    async def get_chain(self, ticker: str, expiration: str) -> dict:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _sync_get_chain, ticker, expiration)
+
+    async def get_risk_free_rate(self) -> float:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _sync_get_risk_free_rate)
+
+    async def get_dividend_rate(self, ticker: str) -> Optional[float]:
+        """Raw `dividendRate` (annual $/share), not a yield — caller computes
+        q = dividendRate / current_price. Do not use `.info["dividendYield"]`,
+        it's off by 100x from every other source (see CLAUDE.md lessons-learned)."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _sync_get_dividend_rate, ticker)
