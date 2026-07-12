@@ -270,3 +270,108 @@ export async function fetchExplain(payload: ExplainRequest): Promise<ExplainResu
   }
   return res.json() as Promise<ExplainResult>;
 }
+
+export interface OptionExpirations {
+  ticker: string;
+  available: boolean;
+  expirations: string[];
+}
+
+export interface OptionContract {
+  strike: number;
+  bid: number | null;
+  ask: number | null;
+  last_price: number | null;
+  volume: number | null;
+  open_interest: number | null;
+  implied_volatility: number | null;
+  last_trade_date: string | null;
+}
+
+export interface OptionChain {
+  ticker: string;
+  expiration: string;
+  calls: OptionContract[];
+  puts: OptionContract[];
+  fetched_at: string;
+}
+
+export interface GreeksInputs {
+  S: number;
+  K: number;
+  T: number;
+  r: number;
+  q: number;
+  sigma: number;
+  price_as_of: string;
+  iv_as_of: string;
+  r_as_of: string;
+  contract_last_trade_at: string | null;
+}
+
+export interface GreeksExplanations {
+  delta: string;
+  gamma: string;
+  theta: string;
+  vega: string;
+  rho: string;
+}
+
+export interface GreeksResult {
+  ticker: string;
+  expiration: string;
+  option_type: string;
+  price: number;
+  delta: number;
+  gamma: number;
+  theta_per_day: number;
+  vega: number;
+  rho_per_percent: number;
+  explanations: GreeksExplanations;
+  inputs_used: GreeksInputs;
+}
+
+export async function fetchOptionExpirations(ticker: string): Promise<OptionExpirations> {
+  const res = await fetch(
+    `${BASE_URL}/api/v1/options/${encodeURIComponent(ticker)}/expirations`,
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, body.detail ?? res.statusText);
+  }
+  return res.json() as Promise<OptionExpirations>;
+}
+
+export async function fetchOptionChain(ticker: string, expiration: string): Promise<OptionChain> {
+  const res = await fetch(
+    `${BASE_URL}/api/v1/options/${encodeURIComponent(ticker)}/chain?expiration=${encodeURIComponent(expiration)}`,
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, body.detail ?? res.statusText);
+  }
+  return res.json() as Promise<OptionChain>;
+}
+
+export async function fetchOptionCalculation(
+  ticker: string,
+  expiration: string,
+  strike: number,
+  type: 'call' | 'put',
+  ivOverride?: number,
+): Promise<GreeksResult> {
+  const params = new URLSearchParams({
+    expiration,
+    strike: String(strike),
+    type,
+  });
+  if (ivOverride != null) params.set('iv', String(ivOverride));
+  const res = await fetch(
+    `${BASE_URL}/api/v1/options/${encodeURIComponent(ticker)}/calculate?${params.toString()}`,
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, body.detail ?? res.statusText);
+  }
+  return res.json() as Promise<GreeksResult>;
+}

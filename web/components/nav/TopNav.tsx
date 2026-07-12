@@ -56,6 +56,9 @@ export default function TopNav({ instant }: TopNavProps) {
         <a href="/screener" className={styles.link}>
           Screener
         </a>
+        <a href="/options" className={styles.link}>
+          Options
+        </a>
         {!loading &&
           (user ? (
             <>

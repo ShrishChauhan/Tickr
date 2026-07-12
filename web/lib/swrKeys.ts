@@ -28,3 +28,17 @@ export const savedScreensKey = (userId: string) => `saved-screens:${userId}`;
 // Internal cache key for a user's saved /compare ticker sets. Not a real API path — fetched
 // directly from Supabase, not the engine — namespaced so it can't collide with any real key.
 export const savedComparisonsKey = (userId: string) => `saved-comparisons:${userId}`;
+
+export const optionExpirationsKey = (ticker: string) =>
+  `/api/v1/options/${ticker.trim().toUpperCase()}/expirations`;
+
+export const optionChainKey = (ticker: string, expiration: string) =>
+  `/api/v1/options/${ticker.trim().toUpperCase()}/chain?expiration=${expiration}`;
+
+export const optionCalculationKey = (
+  ticker: string,
+  expiration: string,
+  strike: number,
+  type: 'call' | 'put',
+  ivDecimal: number,
+) => `/api/v1/options/${ticker.trim().toUpperCase()}/calculate?expiration=${expiration}&strike=${strike}&type=${type}&iv=${ivDecimal}`;

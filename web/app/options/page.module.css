@@ -1,0 +1,336 @@
+.page {
+  min-height: 100svh;
+  background: var(--color-bg);
+  padding: 32px 24px 80px;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.back {
+  display: inline-block;
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  transition: color 0.15s ease;
+}
+.back:hover { color: var(--color-text-primary); }
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: clamp(1.25rem, 3vw, 1.75rem);
+  font-weight: 400;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.subtitle {
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* ─── Ticker input ─────────────────────────────────────────────────────────── */
+
+.inputWrapper {
+  position: relative;
+  width: 320px;
+  max-width: 100%;
+}
+
+.tickerInput {
+  font-family: var(--font-data);
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 8px 14px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.tickerInput:focus { border-color: rgba(43, 255, 136, 0.4); }
+.tickerInput::placeholder { color: var(--color-text-muted); }
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 280px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 50;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.dropdownItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.dropdownItem:hover { background: rgba(255, 255, 255, 0.05); }
+
+.dropdownTicker {
+  font-family: var(--font-data);
+  font-size: 0.875rem;
+  color: var(--color-neon-green);
+  flex-shrink: 0;
+  min-width: 52px;
+}
+
+.dropdownName {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.dropdownBadge {
+  font-family: var(--font-ui);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+
+/* ─── Selected ticker chip ─────────────────────────────────────────────────── */
+
+.tickerChip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chipLabel {
+  font-family: var(--font-data);
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  color: var(--color-neon-green);
+}
+
+.changeButton {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+.changeButton:hover { color: var(--color-text-primary); }
+
+/* ─── Notices / empty state ────────────────────────────────────────────────── */
+
+.notice {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.emptyState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.emptyText {
+  font-family: var(--font-ui);
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  margin: 0;
+}
+
+/* ─── Selection row ─────────────────────────────────────────────────────────── */
+
+.selectRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-end;
+}
+
+.selectGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.selectLabel {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.select {
+  font-family: var(--font-data);
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  min-width: 160px;
+  outline: none;
+}
+.select:focus { border-color: rgba(43, 255, 136, 0.4); }
+
+.toggle {
+  display: flex;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.toggleButton {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: none;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.toggleButton:hover { color: var(--color-text-primary); }
+
+.toggleButtonActive {
+  background: rgba(43, 255, 136, 0.12);
+  color: var(--color-neon-green);
+}
+
+/* ─── Results ──────────────────────────────────────────────────────────────── */
+
+.resultCard {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 24px;
+}
+
+.priceRow {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.priceLabel {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.priceValue {
+  font-family: var(--font-data);
+  font-size: 1.5rem;
+  color: var(--color-text-primary);
+}
+
+.greeksGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.greekRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.greekHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.greekLabel {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.greekValue {
+  font-family: var(--font-data);
+  font-size: 0.9375rem;
+  color: var(--color-text-primary);
+}
+
+.greekExplanation {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* ─── Freshness line ───────────────────────────────────────────────────────── */
+
+.freshnessLine {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.freshnessLine p {
+  font-family: var(--font-data);
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .page { padding: 20px 16px 64px; }
+  .inputWrapper { width: 100%; }
+  .selectRow { flex-direction: column; align-items: stretch; }
+  .select { width: 100%; }
+}
