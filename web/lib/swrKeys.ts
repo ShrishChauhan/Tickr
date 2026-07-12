@@ -24,3 +24,7 @@ export const watchlistPricesKey = (sortedUpperTickers: string[]) =>
 // Internal cache key for a user's saved screener screens. Not a real API path — fetched
 // directly from Supabase, not the engine — namespaced so it can't collide with any real key.
 export const savedScreensKey = (userId: string) => `saved-screens:${userId}`;
+
+// Internal cache key for a user's saved /compare ticker sets. Not a real API path — fetched
+// directly from Supabase, not the engine — namespaced so it can't collide with any real key.
+export const savedComparisonsKey = (userId: string) => `saved-comparisons:${userId}`;

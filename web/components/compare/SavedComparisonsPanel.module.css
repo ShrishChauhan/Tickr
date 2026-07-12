@@ -1,0 +1,125 @@
+.signInNotice {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.signInLink {
+  color: var(--color-neon-green);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+
+.saveRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.nameInput {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  flex: 1;
+  min-width: 160px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.nameInput:focus { border-color: rgba(43, 255, 136, 0.4); }
+.nameInput::placeholder { color: var(--color-text-muted); }
+
+.saveButton {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  color: var(--color-neon-green);
+  background: rgba(43, 255, 136, 0.06);
+  border: 1px solid rgba(43, 255, 136, 0.3);
+  border-radius: 6px;
+  padding: 7px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, opacity 0.15s ease;
+  white-space: nowrap;
+}
+.saveButton:hover:not(:disabled) { border-color: rgba(43, 255, 136, 0.5); }
+.saveButton:disabled { opacity: 0.5; cursor: default; }
+
+.error {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--color-neon-red);
+  margin: 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 8px;
+}
+
+.comparisonName {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+  flex: 1;
+  min-width: 120px;
+}
+
+.tickersBadge {
+  font-family: var(--font-data);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.loadButton,
+.deleteButton {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.loadButton:hover:not(:disabled) {
+  color: var(--color-neon-green);
+  border-color: rgba(43, 255, 136, 0.4);
+}
+.deleteButton:hover:not(:disabled) {
+  color: var(--color-neon-red);
+  border-color: rgba(255, 64, 96, 0.4);
+}
+.loadButton:disabled,
+.deleteButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

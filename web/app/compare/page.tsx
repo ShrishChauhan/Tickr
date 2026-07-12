@@ -18,6 +18,7 @@ import { fetchSearch, fetchCompany, fetchFundamentals } from '@/lib/api';
 import type { NormalizedFundamentals, SearchResult } from '@/lib/api';
 import { searchKey } from '@/lib/swrKeys';
 import { getCurrencySymbol, fmtDollar, fmtPct, fmtMultiple } from '@/lib/format';
+import SavedComparisonsPanel from '@/components/compare/SavedComparisonsPanel';
 import styles from './page.module.css';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -193,6 +194,13 @@ function CompareContent() {
     setDataMap(prev => { const next = { ...prev }; delete next[ticker]; return next; });
   }
 
+  function loadComparison(savedTickers: string[]) {
+    setTickers([]);
+    setDataMap({});
+    setLoadingSet(new Set());
+    for (const t of savedTickers) addTicker(t);
+  }
+
   const atCap = tickers.length + loadingSet.size >= 5;
 
   // ── Radar data (only tickers that have loaded data) ──────────────────────
@@ -299,6 +307,8 @@ function CompareContent() {
             ))}
           </div>
         </div>
+
+        <SavedComparisonsPanel tickers={tickers} onLoad={loadComparison} />
 
         {note && (
           <p className={`${styles.note} ${note.kind === 'error' ? styles.noteError : styles.noteWarn}`}>
