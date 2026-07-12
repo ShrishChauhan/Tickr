@@ -48,9 +48,11 @@ create table if not exists public.tags (
   id              uuid primary key default gen_random_uuid(),
   user_id         uuid not null references auth.users(id) on delete cascade,
   name            text not null,
-  is_auto_derived boolean not null default false,
-  unique (user_id, lower(name))
+  is_auto_derived boolean not null default false
 );
+
+create unique index if not exists tags_user_id_lower_name_key
+  on public.tags (user_id, lower(name));
 
 alter table public.tags enable row level security;
 
