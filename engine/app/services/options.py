@@ -70,7 +70,12 @@ async def _get_risk_free_rate(cache: CacheBackend) -> tuple[float, str]:
 
     raw = await cache.get(cache_key)
     if raw is not None:
-        return raw["rate"], raw["fetched_at"]
+        cached_fetched_at = raw.get("fetched_at")
+        if cached_fetched_at is not None:
+            return raw["rate"], cached_fetched_at
+        # Legacy/malformed cache entry missing a field this code now relies on
+        # (e.g. written before `fetched_at` existed) — treat as a miss and refetch
+        # rather than crash on every request until the TTL expires.
 
     rate = await _provider.get_risk_free_rate()
     fetched_at = datetime.now(timezone.utc).isoformat()

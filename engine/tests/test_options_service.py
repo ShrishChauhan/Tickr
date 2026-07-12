@@ -147,6 +147,17 @@ async def test_calculate_invalid_option_type_raises(cache, patched_provider):
         await options_service.calculate(cache, "AAPL", expiration, 150.0, "straddle")
 
 
+async def test_calculate_tolerates_legacy_risk_free_rate_cache_entry(cache, patched_provider):
+    # A cached payload missing a field the code now expects (e.g. from before
+    # `fetched_at` was added) must be treated as a miss and refetched, not crash.
+    await cache.set("options:risk_free_rate", {"rate": 0.02}, 86_400)
+
+    expiration = _future_expiration()
+    result = await options_service.calculate(cache, "AAPL", expiration, 150.0, "call")
+    assert result.inputs_used.r == pytest.approx(0.037)
+    assert result.inputs_used.r_as_of
+
+
 async def test_calculate_no_iv_no_override_raises(cache, monkeypatch):
     async def fake_get_chain(ticker, expiration):
         return {
