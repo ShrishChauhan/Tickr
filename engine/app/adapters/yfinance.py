@@ -467,6 +467,27 @@ def _derive_contract_month(info: dict, base_ticker: str) -> Optional[str]:
     return None
 
 
+def _sync_get_ohlc_bars(ticker: str) -> list[dict]:
+    t = yf.Ticker(ticker)
+    hist = t.history(period="1y", interval="1d")
+    ohlc_bars = []
+    if hist is not None and not hist.empty:
+        for ts, row in hist.iterrows():
+            bar_date = ts.date() if hasattr(ts, "date") else ts
+            try:
+                ohlc_bars.append({
+                    "date": bar_date,
+                    "open": float(row["Open"]),
+                    "high": float(row["High"]),
+                    "low": float(row["Low"]),
+                    "close": float(row["Close"]),
+                    "volume": float(row["Volume"]) if row["Volume"] else None,
+                })
+            except (KeyError, TypeError, ValueError):
+                continue
+    return ohlc_bars
+
+
 class YFinanceQuoteProvider:
     """Wraps yfinance's `.info` + `.history()` for the price-only endpoint.
     Registered as the universal fallback for every asset class in the
@@ -477,6 +498,13 @@ class YFinanceQuoteProvider:
     async def get_quote(self, ticker: str) -> Optional[dict]:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._sync_get_quote, ticker)
+
+    async def get_ohlc(self, ticker: str) -> list[dict]:
+        """Historical bars only (no `.info` quote fields) — used by the equity
+        cache-TTL split (services/price.py) so bars can be fetched and cached
+        independently of Finnhub's short-TTL live quote."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _sync_get_ohlc_bars, ticker)
 
     def _sync_get_quote(self, ticker: str) -> dict:
         t = yf.Ticker(ticker)
@@ -517,22 +545,7 @@ class YFinanceQuoteProvider:
         if asset_type == "commodity":
             contract_month = _derive_contract_month(info, ticker)
 
-        hist = t.history(period="1y", interval="1d")
-        ohlc_bars = []
-        if hist is not None and not hist.empty:
-            for ts, row in hist.iterrows():
-                bar_date = ts.date() if hasattr(ts, "date") else ts
-                try:
-                    ohlc_bars.append({
-                        "date": bar_date,
-                        "open": float(row["Open"]),
-                        "high": float(row["High"]),
-                        "low": float(row["Low"]),
-                        "close": float(row["Close"]),
-                        "volume": float(row["Volume"]) if row["Volume"] else None,
-                    })
-                except (KeyError, TypeError, ValueError):
-                    continue
+        ohlc_bars = _sync_get_ohlc_bars(ticker)
 
         return {
             "ticker": ticker.upper(),

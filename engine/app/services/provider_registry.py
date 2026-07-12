@@ -51,3 +51,13 @@ async def get_quote(ticker: str) -> Optional[dict]:
             result["source"] = provider.name
             return result
     return None
+
+
+async def get_equity_ohlc(ticker: str) -> list[dict]:
+    """Historical OHLC bars for equities. Finnhub (the equity quote provider)
+    never returns bars (see adapters/finnhub.py) — always goes to yfinance,
+    regardless of which provider actually served the live quote."""
+    try:
+        return await _yfinance_quote_provider.get_ohlc(ticker)
+    except Exception:
+        return []

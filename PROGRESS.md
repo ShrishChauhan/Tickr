@@ -720,3 +720,23 @@ Decided **not** to fix this in-engine this session. `PRICE_TTL_SECONDS = 30` (re
 ### Next
 
 P5.4-B: the "explain this" AI layer — on-demand, per-item, lazy-fetched explanations of price moves, using `AnalysisPanel.tsx`'s existing approach as a starting reference if reusable. Also worth scheduling: the deferred equity-OHLC engine fix, and reconciling CLAUDE.md's stated Next.js version with what's actually installed.
+
+## Session 24 (Cache-TTL split) — Decoupled live equity quote from historical OHLC caching
+
+### Investigation findings
+
+Two parallel investigations (engine cache/registry flow, frontend consumption) confirmed Session 23's diagnosis precisely: `price.py`'s `get_price()` had exactly one fetch (`provider_registry.get_quote()`), one cache key (`price:{TICKER}`), one TTL for the combined quote+`ohlc` blob — for every asset type. Crypto (Coinbase)/forex/commodity/index (yfinance) were never actually "correctly split" as originally assumed; they only *looked* fine because their winning provider fetches quote and bars together in one atomic API call, so one cache entry is legitimately sufficient for them. Equities are the only asset class where quote (Finnhub) and bars (only ever available from yfinance — Finnhub's adapter hardcodes `"ohlc": []`) come from genuinely different sources with different freshness needs. The reusable OHLC-fetch code already existed inside `YFinanceQuoteProvider._sync_get_quote` (the `hist = t.history(...)` block) but wasn't exposed as its own method.
+
+### Done
+
+- `engine/app/adapters/yfinance.py`: extracted the historical-bars block into a standalone `_sync_get_ohlc_bars(ticker)`, reused by `_sync_get_quote` unchanged (zero behavior change for existing callers); added `YFinanceQuoteProvider.get_ohlc(ticker)` wrapping it in `run_in_executor`.
+- `engine/app/services/provider_registry.py`: added `get_equity_ohlc(ticker)`, a thin yfinance-only call (Finnhub never has bars, so no provider list needed here).
+- `engine/app/services/price.py`: split `get_price()` into an asset-type dispatcher. Non-equity keeps the exact original single-fetch/single-key path (`_get_bundled_price`, untouched behavior). Equity (`_get_equity_price`) now caches the live quote under `quote:{TICKER}` (same 30s/900s TTL rule as before) and historical bars under `ohlc:{TICKER}` at a flat `PRICE_DATA_TTL_SECONDS` (900s), merging them into one `PriceOnlyData` before returning — response shape unchanged, so the frontend needed zero edits. Skips the separate OHLC fetch entirely when the quote itself already carried bars (the yfinance-fallback case, e.g. no `FINNHUB_API_KEY`), avoiding a redundant yfinance call.
+
+### Verified
+
+Live curl against the running engine: `AAPL` and other Finnhub-served US equities now return 250+ real OHLC bars (previously always `[]`), `source`/`is_delayed`/`freshness_label` still correctly read `finnhub`/`false`/`"Real-time"` (untouched by the OHLC merge — confirmed no regression to B1's freshness labeling). Repeat call within 30s showed identical `fetched_at` (quote served from its own 30s-TTL cache) while bars stayed stable (separately cached, not re-fetched). Crypto (`BTC-USD`), forex (`EURUSD=X`), commodity (`GC=F`) all unchanged — same `source`, `is_delayed`, and bar counts as before this change. Non-US equity (`SHEL.L`, dotted suffix, Finnhub declines it so yfinance serves the quote directly) correctly skipped the extra OHLC fetch since yfinance's own quote call already carried bars — no double yfinance hit. `npm run build` in `web/` clean (TypeScript + Next.js 16.2.9), zero frontend diff needed, confirming the response contract held. Browser verification of `/watchlist`'s equity sparkline (now real data vs. the placeholder dashed line) deferred to the user — needs their login session.
+
+### Next
+
+P5.4-B: the "explain this" AI layer (unchanged scope from Session 23's handoff).
