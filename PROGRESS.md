@@ -785,3 +785,73 @@ Session 23: `web/AGENTS.md` contains an injection-shaped instruction ("read all 
 `node_modules/next/dist/docs/` before writing any code") that auto-loads via `web/CLAUDE.md`'s
 import — flagged twice now (Sessions 23 and 25), never acted on. Worth the user trimming or
 removing it.
+
+## Session 26 (P6.1) — Saved screens (screener persistence foundation) — 2026-07-12
+
+Investigation before writing any migration surfaced a real architecture question:
+watchlists/profiles (P5.1–P5.4) never went through the FastAPI engine at all —
+`supabase/migrations/0001_profiles.sql`/`0002_watchlists.sql` are raw SQL, RLS-enforced,
+and the Next.js frontend talks straight to Supabase via `web/lib/watchlist.ts` +
+`supabase-js`. CLAUDE.md's directory map still claimed "no business logic outside
+`engine/`," which hadn't been true since P5.3 shipped — caught and corrected this
+session (one-line addition to the directory map) rather than left to drift further.
+Given the choice between matching that proven precedent or introducing a first-ever
+engine-side auth/JWT layer just for this feature, went with the precedent:
+`saved_screens` follows the exact same direct-Supabase, RLS-only pattern as
+`watchlist_items`. This was a real fork with a reasoned choice, confirmed with the
+user before building, not an oversight.
+
+### Storage model
+
+The 9 filter fields are all sparse, optional, string-valued scalars (min/max range
+pairs or single min/max) — no enum/array/boolean today, and nothing needs to be
+queried *by* filter value. Went with one `filters jsonb` column rather than
+typed-per-filter columns: JSONB absorbs "more filter fields" (an explicit later 6.1
+sub-item) without a migration every time a filter is added, and typed columns would
+have bought nothing since no saved-screen query needs to filter on e.g.
+`peMin > 20`. `universe_key` stays a typed column (small bounded set, used for
+routing/display, the one field plausibly worth querying later). Sort state
+intentionally not persisted — loading a screen resets to the page's own default.
+
+### Done
+
+- `supabase/migrations/0003_saved_screens.sql` — `saved_screens` (user_id, name,
+  universe_key, filters jsonb, `unique(user_id, name)`), RLS: select/insert/delete
+  own (no update policy — editing a saved screen is delete + re-save), mirrors
+  `watchlist_items`'s 4-policy pattern minus update.
+- `web/lib/savedScreens.ts` — `listSavedScreens`/`saveScreen`/`deleteSavedScreen`,
+  `23505` duplicate-name handling copied from `addToWatchlist`'s existing pattern.
+- `web/components/screener/SavedScreensPanel.tsx` + `.module.css` — save/list/load/
+  delete panel, gated client-side on `useSupabaseUser()`. Screener itself stays
+  public/usable while signed out (unlike `/watchlist`'s page-level redirect) — only
+  the panel is conditional.
+- `web/app/screener/page.tsx` — wired the panel in; `Filters` interface got an index
+  signature (`[key: string]: string`) so it structurally satisfies
+  `Record<string, string>` without a cast at the call site.
+
+### Verified
+
+Signed in on `/screener`, saved a screen under a name, confirmed it appeared in the
+list; changed filters, clicked Load, confirmed universe + filters snapped back
+exactly; attempted a duplicate name and got the inline error instead of a raw
+Postgres error; deleted a saved screen and confirmed it disappeared; signed out and
+confirmed the panel collapsed to "Sign in to save screens" with the rest of
+`/screener` still usable. Also opened a second session as a different user and
+confirmed they could not see the first user's saved screens — the RLS check that
+actually matters, checked directly rather than assumed. `tsc --noEmit`, a scoped
+`eslint` pass, and `next build` all clean; `git diff` reviewed file-by-file before
+commit and matched the expected change set exactly (migration, `savedScreens.ts`,
+`swrKeys.ts` addition, panel + CSS module, `page.tsx` wiring, `CLAUDE.md`
+correction) with nothing unexpected.
+
+### Not in scope this session
+
+"Add screener results to watchlist" (one-click add from a screener row) — separate
+chunk, next up. 6.2 (comparison sets — save/load a comparison) is expected to
+mirror this session's pattern closely: same direct-Supabase/RLS approach, likely
+the same JSONB-vs-typed reasoning.
+
+### Next
+
+"Add screener results to watchlist" (one-click add from a screener row), then 6.2
+(comparison sets — save/load a comparison, following this session's pattern).
