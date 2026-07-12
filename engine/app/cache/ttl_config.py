@@ -5,3 +5,4 @@ FUNDAMENTALS_TTL_SECONDS = 86_400   # quarterly/annual financials: 1 day
 FILING_REF_TTL_SECONDS = 86_400     # filing list/metadata: 1 day
 AI_ANALYSIS_TTL_SECONDS = 604_800   # AI summaries: 7 days (until next filing invalidates)
 COMPANY_INFO_TTL_SECONDS = 86_400   # company name/exchange/etc: 1 day
+EXPLAIN_TTL_SECONDS = 1800          # price-move context: 30 min, bucketed by ticker+rounded change% (see services/explain.py)

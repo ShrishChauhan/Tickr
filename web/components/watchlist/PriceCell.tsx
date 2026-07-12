@@ -3,6 +3,7 @@
 import type { WatchlistPriceEntry } from "@/lib/hooks/useWatchlistPrices";
 import { fmtPrice, fmtChangePct } from "@/lib/format";
 import Sparkline from "./Sparkline";
+import ExplainButton from "./ExplainButton";
 import styles from "./PriceCell.module.css";
 
 interface Props {
@@ -39,6 +40,14 @@ export default function PriceCell({ entry }: Props) {
         </span>
       </div>
       <Sparkline ohlc={ohlc} isUp={isUp} />
+      {current_price != null && (
+        <ExplainButton
+          ticker={entry.data.ticker}
+          assetType={entry.data.asset_type}
+          currentPrice={current_price}
+          changePct={change_24h_pct}
+        />
+      )}
     </div>
   );
 }

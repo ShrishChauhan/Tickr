@@ -241,3 +241,32 @@ export async function fetchAnalysis(ticker: string): Promise<AnalysisResult> {
   }
   return res.json() as Promise<AnalysisResult>;
 }
+
+export interface ExplainResult {
+  ticker: string;
+  explanation: string;
+  generated_at: string;
+  cached: boolean;
+}
+
+export interface ExplainRequest {
+  ticker: string;
+  asset_type: string;
+  current_price: number;
+  change_pct: number | null;
+  gross_margin?: number | null;
+  pe_ratio?: number | null;
+}
+
+export async function fetchExplain(payload: ExplainRequest): Promise<ExplainResult> {
+  const res = await fetch(`${BASE_URL}/api/v1/explain`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, body.detail ?? res.statusText);
+  }
+  return res.json() as Promise<ExplainResult>;
+}

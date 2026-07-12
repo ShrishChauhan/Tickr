@@ -5,6 +5,7 @@ from .filings import FilingReference, FilingType
 from .analysis import AnalysisResult
 from .price_only import PriceOnlyData, OHLCBar
 from .screener import ScreenerFields, ScreenerRow
+from .explain import ExplainRequest, ExplainResult
 
 __all__ = [
     "CompanyIdentity", "Market", "Exchange", "Currency",
@@ -13,4 +14,5 @@ __all__ = [
     "AnalysisResult",
     "PriceOnlyData", "OHLCBar",
     "ScreenerFields", "ScreenerRow",
+    "ExplainRequest", "ExplainResult",
 ]

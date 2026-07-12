@@ -5,6 +5,7 @@
 #   {source}:filings:{TICKER}:{limit}:{types_str}   (types_str = sorted comma-joined values or "all")
 #   analysis:{TICKER}:{source}:{period}:{limit}
 #   price:{TICKER}
+#   explain:{TICKER}:{change_bucket}
 import asyncio
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -24,10 +25,12 @@ from ..config import settings
 from ..schema import CompanyIdentity, NormalizedFundamentals, FilingReference, AnalysisResult, PriceOnlyData, ScreenerRow
 from ..schema.fundamentals import Period
 from ..schema.filings import FilingType
+from ..schema.explain import ExplainRequest, ExplainResult
 from ..services import company as company_service
 from ..services import fundamentals as fundamentals_service
 from ..services import price as price_service
 from ..services import screener as screener_service
+from ..services import explain as explain_service
 from ..services.company import CompanyLookupError, EXCHANGE_DISPLAY
 from ..services.fundamentals import FundamentalsLookupError
 from ..services.price import PriceLookupError
@@ -204,6 +207,17 @@ async def analyze_company(
         period=period,
         periods_analyzed=periods_analyzed,
     )
+
+
+@router.post("/explain", response_model=ExplainResult)
+async def explain_price_move(request: ExplainRequest):
+    engine = _get_analysis_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="AI analysis not configured (GROQ_API_KEY missing)")
+    try:
+        return await explain_service.get_explanation(_cache, engine, request)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI explanation failed: {e}")
 
 
 _SEARCH_TTL_SECONDS = 3600

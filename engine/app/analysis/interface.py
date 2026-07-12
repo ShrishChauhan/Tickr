@@ -15,3 +15,9 @@ class AnalysisEngine(ABC):
     ) -> str:
         """Return a plain-English analysis of the company given the provided data and question."""
         ...
+
+    @abstractmethod
+    async def explain(self, context: str) -> str:
+        """Return a short (1-3 sentence) educational note. Must not claim a specific,
+        unverified cause for a price move — no news/event data is available."""
+        ...

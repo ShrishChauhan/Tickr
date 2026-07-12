@@ -10,6 +10,18 @@ from ..config import settings
 
 logger = logging.getLogger(__name__)
 
+_EXPLAIN_SYSTEM_PROMPT = (
+    "You provide brief educational context about price moves and financial metrics for a "
+    "retail investing app. You have no news feed or event data, so you must NOT claim to know "
+    "the specific cause of any price movement, and must never invent a reason (e.g. do not say "
+    "'due to strong earnings' or similar unless that exact fact was given to you). Instead: "
+    "explain whether the magnitude of the move is typical or unusual for this kind of asset, or "
+    "explain what a given metric means and whether the value looks strong, weak, or typical. If "
+    "asked about a price move with no other context, discuss magnitude only, or say plainly that "
+    "the cause is unknown — never speculate. Keep the answer to 1-3 sentences, plain English, no "
+    "headers or bullet points."
+)
+
 
 class GroqAnalysisEngine(AnalysisEngine):
 
@@ -45,6 +57,22 @@ class GroqAnalysisEngine(AnalysisEngine):
             ],
             max_tokens=1500,
             temperature=0.1,
+        )
+        return completion.choices[0].message.content
+
+    async def explain(self, context: str) -> str:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._call_groq_explain, context)
+
+    def _call_groq_explain(self, context: str) -> str:
+        completion = self._client.chat.completions.create(
+            model=self._model,
+            messages=[
+                {"role": "system", "content": _EXPLAIN_SYSTEM_PROMPT},
+                {"role": "user", "content": context},
+            ],
+            max_tokens=200,
+            temperature=0.2,
         )
         return completion.choices[0].message.content
 
