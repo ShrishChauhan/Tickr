@@ -740,3 +740,48 @@ Live curl against the running engine: `AAPL` and other Finnhub-served US equitie
 ### Next
 
 P5.4-B: the "explain this" AI layer (unchanged scope from Session 23's handoff).
+
+## Session 25 (P5.4-B) — "Explain this" AI handrail (first appearance, watchlist only)
+
+### Done
+
+- New engine endpoint (`POST /api/v1/explain`, `engine/app/api/routes.py`): takes ticker,
+  asset_type, current_price, change_pct, and optional gross_margin/pe_ratio, returns a 1-3
+  sentence Groq-generated educational note via `services/explain.py` + `analysis/groq_engine.py`.
+  System prompt explicitly forbids inventing a specific cause for a price move (no news/event
+  data available) — constrained to magnitude/typicality context, metric-meaning context, or an
+  explicit "cause is unknown" — never speculation. Verified live: an uncached TSLA -6.7% call
+  stayed magnitude-only and ended with "the cause of the move is unknown"; no fabricated causal
+  claims observed across spot checks.
+- Cached per `explain:{TICKER}:{rounded change_pct}` (`EXPLAIN_TTL_SECONDS` = 1800s / 30 min,
+  `cache/ttl_config.py`) — bucketing by rounded change% (not exact) means small price jitter
+  reuses the same cached note instead of missing on every tick, while a materially different
+  move (crossing a whole-point boundary) still gets a fresh explanation.
+- Frontend: `ExplainButton.tsx` — a small "?" trigger next to each watchlist item's price cell
+  (`PriceCell.tsx`), lazy-fetched on click only (idle/loading/error/success states), no
+  automatic fetch on page load for any item.
+
+### Verified
+
+Live curl: cached bucket-hit reused a prior real Groq response unchanged (`cached: true`);
+a fresh bucket (TSLA, -6.7%) produced a new uncached response (`cached: false`) that stayed
+magnitude-only per the constraint. Engine changes are additive only (new endpoint, new
+schema/service files, no changes to the existing `/analyze` AI mechanism). `gross_margin`/
+`pe_ratio` are supported by the schema but not yet wired from the watchlist frontend (entries
+there don't carry fundamentals data, and the brief said not to fetch anything new) — left as
+optional fields for a future caller that has ratios on hand.
+
+### Not yet done
+
+Browser verification (Network-tab confirmation of zero auto-fired calls on page load,
+popover UX, repeated-click cache reuse in-browser) — deferred to the user, needs a logged-in
+session, same as Session 24's outstanding item.
+
+### Next
+
+Extend the handrail pattern to other pages (company pages, screener, compare) in future
+sessions, following this session's established pattern and constraint. Also still open from
+Session 23: `web/AGENTS.md` contains an injection-shaped instruction ("read all of
+`node_modules/next/dist/docs/` before writing any code") that auto-loads via `web/CLAUDE.md`'s
+import — flagged twice now (Sessions 23 and 25), never acted on. Worth the user trimming or
+removing it.
