@@ -991,3 +991,152 @@ correct; **B** — engine wiring (adapters, service orchestration, endpoints);
 Session B: engine wiring — `YFinanceOptionsProvider` adapter, risk-free-rate
 helper, `services/options.py` orchestration, `schema/options.py`, the 3
 `/options/*` endpoints, TTL config additions. No frontend until Session C.
+
+## Session 29 (P6.3 Session B) — Options engine wiring — 2026-07-12
+
+Built the engine wiring around Session A's Black-Scholes module: adapter,
+orchestration service, schema, 3 endpoints, TTL config. Live-tested against
+real AAPL data before committing, not just unit tests.
+
+### What got built
+
+- `YFinanceOptionsProvider` (`adapters/yfinance.py`) — expirations, chain,
+  risk-free rate (`^IRX`), dividend rate.
+- `services/options.py` — cache orchestration (`get_expirations`, `get_chain`,
+  `calculate`), theta/rho unit conversion (annualized → per-day / per-percent),
+  static Greek explanation templates.
+- `schema/options.py` — `OptionContract`, `OptionChain`, `OptionExpirations`,
+  `GreeksInputs`, `GreeksExplanations`, `GreeksResult`.
+- 3 endpoints: `/options/{ticker}/expirations`, `/chain`, `/calculate`.
+- `OPTIONS_CHAIN_TTL_SECONDS` (300s) and `RISK_FREE_RATE_TTL_SECONDS` (86400s)
+  added to `ttl_config.py`.
+- US equities/ETFs only, per Session 28's scope decision — other tickers get
+  a clean empty state, not a silent failure.
+
+### The freshness/staleness question — a real decision, not just a fix
+
+Mid-session, live-testing against AAPL surfaced a real issue: the underlying
+spot price S (from `price_service.get_price`, 30s TTL) and the chain's
+implied volatility σ (300s TTL) are fetched independently, so a computed
+Greeks price can legitimately diverge from the quoted bid/ask because S and σ
+reflect different moments in a fast-moving market.
+
+The naive-sounding fix — force an atomic fetch of chain + price + dividend
+under one cache key/TTL — was considered and rejected. It would only close
+the smaller, bounded gap (our own cache skew, ≤300s) while leaving the larger,
+unbounded one completely untouched: yfinance's `impliedVolatility` is derived
+from that specific contract's *last trade*, which can be stale by days for a
+thinly-traded strike — no fetch-timing fix changes that. It would also
+duplicate fetch/cache logic that already exists in `price_service`, fight the
+deliberate 300s chain TTL (chosen because chains are too expensive to refetch
+every 30s), and diverge from the plan Session 28 approved.
+
+Chose disclosure over false consistency instead: `GreeksInputs` now carries
+`price_as_of` / `iv_as_of` / `r_as_of` (our own cache-fetch timestamps) plus a
+per-contract `last_trade_date` (surfaced via a new `OptionContract` field,
+sourced from yfinance's `lastTradeDate` column — confirmed live as a tz-aware
+`datetime64[s, UTC]`, not a bool-trap field). This shows a user both facts
+separately — how fresh our data is, and how stale that specific contract's IV
+actually is — rather than pretending a matched timestamp means a matched
+reality. Matches the project's existing freshness-labeling pattern (B1)
+rather than inventing a new consistency mechanism.
+
+Concrete proof this mattered: a live sanity-check run against real AAPL data
+showed `iv_as_of` at ~instant (fresh cache) while that same contract's
+`last_trade_date` was ~2 days old — a real, visible example of exactly the
+gap atomicity would have missed entirely, since atomicity only guarantees our
+own reads agree with each other, not that either agrees with the market.
+
+The longer-term fix — a proper options data source plus computing the Greeks
+in-house from one true snapshot — is flagged for later, not now; not worth
+the scoping effort until it's actually needed.
+
+### Verified
+
+46/46 tests pass (38 prior + 8 new). No live network calls in the test suite
+itself — provider and price service are monkeypatched. Separately ran a live
+end-to-end smoke test against real AAPL options data (expirations → chain →
+calculate, freshness fields populated correctly) and the out-of-scope
+empty-state path (GC=F, SAP.DE — zero expirations, clean `available: false`).
+
+### Next
+
+Session C — the `/options` frontend route: ticker typeahead → expiration →
+strike/type selection → Greeks output, using the static explanation templates
+and the freshness/transparency line (`inputs_used`, including the new
+per-contract `last_trade_date`).
+
+## Session 30 (P6.3 Session C) — Options frontend, arc close-out — 2026-07-13
+
+Built the `/options` frontend route on top of Session B's engine wiring,
+closing out the 3-session 6.3 arc.
+
+### What got built
+
+- `/options` route (`web/app/options/page.tsx` + `page.module.css`): ticker
+  typeahead (reuses the existing search endpoint/pattern, not `/compare`'s own
+  code) → expiration select → type/strike select → IV override → Greeks
+  output with per-Greek explanations and a freshness/disclosure line.
+- Cascading state machine: each selection invalidates everything downstream
+  of it (ticker change resets expiration/type/strike/IV; expiration change
+  resets type/strike/IV; etc.), so stale selections can't silently persist
+  across an upstream change.
+- `web/lib/api.ts` — `fetchOptionExpirations`, `fetchOptionChain`,
+  `fetchOptionCalculation` plus the matching response types.
+- `web/lib/swrKeys.ts` — `optionExpirationsKey`, `optionChainKey`,
+  `optionCalculationKey`.
+- `TopNav.tsx` — added the `/options` nav link.
+- Styling is explicitly placeholder-quality per instruction — functional
+  first, visual polish deferred until the backend surface is stable.
+
+### A real bug, found live during verification (not introduced by this session)
+
+`/calculate` was 500ing in the browser. Root cause: a pre-existing Postgres
+cache row for the risk-free-rate, written before Session B added the
+`fetched_at` field to that payload shape, didn't have the field Session B's
+code now reads unconditionally (`raw["fetched_at"]`). Fixed in
+`engine/app/services/options.py` by treating a cached payload missing
+`fetched_at` as a miss and refetching, rather than crashing on the raw key
+access — a real forward-compatibility gap (any future field added to a cached
+payload will hit the same failure mode on pre-existing rows), not a one-off
+typo. Added a regression test seeding the exact malformed shape. Logged as a
+CLAUDE.md gotcha: cached dict payloads should be read with `.get()` and a
+miss fallback, not `[key]`.
+
+### Verified
+
+Full manual browser verification by the user (not a self-report): AAPL
+end-to-end (search → expirations → expiration → strike → IV autofill →
+Greeks/explanations/freshness line), IV override recalculation, the Change
+button's reset behavior, and the out-of-scope ticker empty state. The user
+also confirmed the risk-free-rate cache fix directly — engine restarted
+cleanly, `/calculate` returns real data.
+
+Worth naming explicitly: the freshness-disclosure decision from Session B
+paid off concretely during this verification — a deep-ITM AAPL contract
+(strike 120 vs. spot ~315) returned an implausible 308% implied volatility,
+and the freshness line immediately explained why (`contract_last_trade_at`
+was 3 days stale on a contract nobody trades at that level). The computed
+price stayed correct regardless (dominated by intrinsic value that deep
+ITM), and the transparency line let the user see the suspicious input rather
+than silently trust it — the Session B design decision working as intended,
+observed live rather than just reasoned about.
+
+### Arc closed
+
+Phase 6.3 (options calculator) is now complete: Session A (Black-Scholes
+math, proven against 2 independent published references), Session B (engine
+wiring, freshness-disclosure architecture over forced atomicity), Session C
+(frontend, browser-verified end-to-end). No persistence/saved-calculation
+feature was built — explicitly out of scope per the plan approved in
+Session 28.
+
+### Next
+
+Per HANDOFF.md: either "add screener results to watchlist" (one-click add
+from a screener row, still pending from 6.1), Phase 6.2's originally-deferred
+radar-chart cap question, or start Phase 7 (thin-slice backtester) per
+ROADMAP.md's sequencing. Also still open: the pre-existing typeahead lint
+debt from Session 27 (own session/own manual test), and the longer-term
+"compute Greeks from one true snapshot with a real options data source" idea
+flagged in Session 29 for future consideration.
