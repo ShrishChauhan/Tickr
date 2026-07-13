@@ -39,3 +39,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Internal — never commit
+COMPETITIVE_ANALYSIS.md
