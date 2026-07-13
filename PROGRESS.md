@@ -1140,3 +1140,224 @@ ROADMAP.md's sequencing. Also still open: the pre-existing typeahead lint
 debt from Session 27 (own session/own manual test), and the longer-term
 "compute Greeks from one true snapshot with a real options data source" idea
 flagged in Session 29 for future consideration.
+
+## Session 31 (P7.1) — Historical-data pipeline: yfinance → Parquet → local DuckDB — 2026-07-13
+
+Phase 7 (thin-slice backtester) begins. This session is 7.1 only — proving the
+historical-data pipeline mechanism per ARCHITECTURE.md §5d. 7.2 (actual backtest
+strategy logic) is a separate future session.
+
+### Doc-drift found (flagged, not fixed)
+
+CLAUDE.md and PROGRESS.md reference `ROADMAP.md`, `UPCOMING_PHASES.md`, and
+`HANDOFF.md` as if they exist ("per ROADMAP.md's sequencing", "Per HANDOFF.md").
+None of the three exist anywhere in the repo — only `ARCHITECTURE.md`,
+`CLAUDE.md`, `PROGRESS.md`, `README.md` do. All phase/sequencing content
+actually lives in `ARCHITECTURE.md` §4–§8. Worth deciding at some point whether
+to create those files or strip the dangling references — not addressed here.
+
+### Stooq is dead — architecture premise failure, not a workaround situation
+
+ARCHITECTURE.md §5d named Stooq as the free bulk-CSV historical source. Live
+testing this session found it's no longer usable at all:
+- Every page on stooq.com (including `/db/h` and the per-symbol `/q/d/l/` CSV
+  endpoint) now returns a JS proof-of-work anti-bot challenge (compute a
+  SHA-256 collision, POST the answer, get a cookie) before serving anything —
+  confirmed on stooq.com and the stooq.pl mirror, every request, not
+  intermittent.
+- The old static bulk-zip subdomain now returns `401 Unauthorized` requiring
+  HTTP Basic Auth — the free bulk dump is paywalled now.
+
+Same class of block as nsepython/Akamai (B5, deferred indefinitely) — an
+intentional anti-scraping measure, not something to script a solver around.
+**Substituted yfinance** as the bulk historical source instead (confirmed with
+user before proceeding): already integrated, already free, and live-tested this
+session with real depth — AAPL back to 1980 (11,485 rows), MMM to 1962 (16,238
+rows), TCS.NS to 2002, RELIANCE.NS to 1996.
+
+### What got built
+
+- `duckdb>=1.5.0` added to `engine/pyproject.toml` core dependencies (needed by
+  7.2's backtest queries too, not just this script). Installed cleanly —
+  prebuilt `cp312-win_amd64` wheel, no native build.
+- `engine/scripts/backfill_historical.py` — new `engine/scripts/` dir (distinct
+  from `engine/tests/`'s probe/verify scripts, which are investigation-only;
+  this is an operational one-time job). Dedupes tickers across all 4 universe
+  files via `services/universes.py`'s `known_universe_keys()`/`load_universe()`
+  (567 unique), fetches 20y daily OHLC per ticker via yfinance, writes one
+  Parquet file per ticker (snappy) to `engine/data_historical/` (gitignored —
+  bulk generated data, not source). Log-and-skip on a per-ticker exception, no
+  retry/backoff machinery — not needed for a 567-iteration one-time script.
+- `engine/tests/probe_duckdb_local.py` — matches the existing
+  `probe_yfinance_coverage.py` convention. Proves the actual mechanism
+  ARCHITECTURE.md §5d calls for: DuckDB querying Parquet directly, no DB
+  server — against local files (R2 deferred, see below; query mechanism is
+  identical either way, just a different URI scheme).
+
+### Corrected sizing (measured, not the doc's estimate)
+
+ARCHITECTURE.md assumed ~50 KB/ticker for 20 years. Actual measurement: ~250
+KB/ticker (AAPL 258 KB, MMM 240 KB) — about 5x the original estimate. Still
+trivial: real backfill run produced 567 files / 117 MB total (measured), for
+2,588,596 rows — 1.4% of R2's 10 GB free tier even at the corrected number.
+
+### Verified
+
+Ran the real backfill end-to-end: 567/567 tickers succeeded, 0 skipped, 320.5s.
+`probe_duckdb_local.py` confirmed a cross-file DuckDB query
+(`read_parquet('*.parquet')`) returns correct aggregates (2,588,596 total rows,
+567 distinct tickers) and per-ticker spot checks (AAPL/MMM/TCS.NS/RELIANCE.NS
+row counts and date ranges) match exactly what the backfill run itself
+reported. DuckDB's unquoted-identifier case-insensitivity against
+mixed-case Parquet columns (`Close`, not `close`) was verified directly before
+relying on it in the probe query.
+
+### Deferred (user decision, not a technical blocker)
+
+R2 upload and DuckDB-over-HTTP querying against R2 are deferred to a follow-up
+session — user is setting up the Cloudflare account/bucket/API token on their
+own time. What's needed when ready: a Cloudflare account, an R2 bucket, an
+S3-compatible API token (access key ID + secret), and the account ID (endpoint
+format `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`, region `auto` —
+confirmed live via Cloudflare's docs this session). No R2 credentials were
+added to `.env` this session since nothing consumes them yet.
+
+### Next
+
+Follow-up session: R2 bucket setup (user-side) + upload the 567 local Parquet
+files + DuckDB-over-HTTP probe against R2 (mirrors `probe_duckdb_local.py` but
+pointed at `s3://` instead of local disk). Then 7.2 — actual backtest strategy
+logic (moving-average crossover), which is what will finally consume this data
+via a real engine endpoint (no endpoint was built this session — speculative
+before 7.2 exists to drive its shape).
+
+## Session 32 (P7.2) — MA-crossover backtester: proving the mechanism is honest — 2026-07-13
+
+First actual backtest logic. Deliberately narrow scope: one strategy
+(moving-average crossover), one ticker at a time, hardcoded default
+parameters, no composer, no endpoint, no frontend — the point was proving
+the backtest *mechanism* is honest before anything gets built on top of it
+in Phase 8. Plan-mode investigation first (methodology decisions, verified
+against real Parquet data, before any code), same discipline as Session 28's
+Black-Scholes investigation.
+
+### Data facts verified live before designing anything
+
+- Splits are already baked into 7.1's raw OHLC regardless of
+  `auto_adjust=False` — confirmed on NVDA's 2024-06-10 10:1 split (`Close`
+  shows no discontinuity; `Stock Splits` separately flags the event). No
+  split-artifact risk in raw `Close`/`Open`.
+- `Adj Close` differs from raw `Close` only by dividend adjustment — on
+  dividend-heavy 20y names (MMM/KO/JNJ), `Adj Close` sits at ~55-56% of raw
+  `Close` at the start of the series, converging to 100% at the most recent
+  date. A real, material total-return effect; using raw `Close` for a
+  long-horizon MA backtest would silently drop 20 years of dividend income.
+- No "Adjusted Open" column exists — only raw `Open` and `Adj Close`.
+
+### The methodology decisions (the actual point of this session)
+
+- **Bar timing:** signal from bar T's `Adj Close`, fill at bar T+1's
+  `Adj Close`. Considered and rejected synthesizing an "Adjusted Open" via
+  ratio-scaling to fill at T+1's open instead — both conventions are equally
+  look-ahead-free (a realism choice, not a correctness one), and close-fill
+  avoids a latent-bug class where a dividend-adjusted signal series could
+  mismatch a synthetic execution series right around ex-dividend dates near
+  a crossover.
+- **Documented, not fixed:** `Adj Close` for a historical date is
+  retroactively recomputed every time a *later* dividend is paid — a
+  crossover signal on an old bar technically reflects dividends paid after
+  that date, a small inherent look-ahead in using one present-day-adjusted
+  series across a 20-year window. Fixing this needs point-in-time-vintage
+  adjustment factors that 7.1's pipeline doesn't store. Logged in
+  `ma_crossover.py`'s module docstring as an accepted, scoped-out limitation
+  — surfacing it, not silently ignoring it, was the point.
+- **Transaction costs:** `cost_pct` (default 0.001 = 10 bps), applied as a
+  fill-price adjustment on both entry and exit — a named parameter, not a
+  magic number.
+- **Position sizing:** all-in/all-out, fractional shares (not whole-share
+  flooring) — flooring would leave idle cash needing its own unstated
+  modeling assumption (earns 0% or risk-free rate?), muddying whether a
+  return delta came from the strategy or from flooring residue.
+- **Edge cases:** first `long_window-1` bars structurally excluded from
+  crossover detection (never a false "no crossover"); an open position at
+  the end of the window is marked-to-market, not force-closed, and its P&L
+  stays `None` (unrealized ≠ realized, never conflated); `num_trades`/
+  `win_rate_pct` count closed trades only, `win_rate_pct` is `None` (not
+  `0%`) when there are zero closed trades; `max_drawdown` computed via a
+  running maximum, not naive global-min/max (the naive version overstates
+  drawdown whenever the global min precedes the global max chronologically
+  — proven with a concrete discriminating test case: `[100,130,90,140,120]`
+  gives 30.77% via running-max vs a wrong 35.71% via naive global min/max).
+
+### What got built
+
+- `engine/app/services/ma_crossover.py` — pure math (`sma`,
+  `detect_crossovers`, `max_drawdown`, `run_backtest`), zero cache/adapter/
+  network/DuckDB imports, matching `black_scholes.py`'s purity convention.
+  Named for the concrete strategy implemented, not a false general
+  "backtest engine" abstraction — that's Phase 8's job once a second
+  strategy exists to justify it. Results are plain `@dataclass(frozen=True)`
+  (`Trade`, `BacktestResult`), not Pydantic — a deliberate YAGNI call, since
+  nothing consumes JSON-serialized output without an endpoint or cache entry
+  yet; translating to `schema/backtest.py` is a mechanical step once Phase
+  8's UI defines its actual shape needs.
+- `engine/app/services/historical_data.py` — first service-layer DuckDB
+  wrapper (7.1 only had ad-hoc scripts). `load_price_history(ticker, start,
+  end)` queries one ticker's local Parquet file directly (not the
+  multi-ticker glob — more efficient for a single-ticker load), returns
+  `DataFrame[date, adj_close]`, `date` cast from the tz-aware Parquet
+  timestamp to a plain `DATE`. `HistoricalDataError` on a missing ticker or
+  empty range.
+- `engine/app/services/backtest.py` — thin sync orchestrator (no `async`/
+  `CacheBackend`: no real async I/O and nothing here justifies caching a
+  free local read). `run_ticker_backtest()` wires `historical_data` into
+  `ma_crossover`; `DEFAULT_SHORT_WINDOW=50`, `DEFAULT_LONG_WINDOW=200`,
+  `DEFAULT_COST_PCT=0.001`, `DEFAULT_STARTING_CAPITAL=100_000.0` as named
+  constants — this is where "hardcoded parameters" is literally satisfied.
+  This is the exact seam Phase 8's future endpoint will call.
+- **No endpoint, no TTL cache entry** — mirrors Phase 6.3's deferral of the
+  options endpoint until there was a UI consumer (here, Phase 8); local
+  Parquet+DuckDB reads are already fast with zero external cost, so caching
+  them earns nothing.
+
+### Numerical correctness — verified, not eyeballed
+
+An 18-bar synthetic price series with `short_window=3, long_window=5` was
+hand-computed to have a golden cross at i=7 and a death cross at i=14, then
+**independently reproduced with a live pandas rolling-mean run before being
+trusted** — same discipline as Session 28's Hull-textbook reference values.
+`engine/tests/test_ma_crossover.py` (19 tests, mirrors
+`test_black_scholes.py`'s section-banner structure) asserts the full
+zero-cost and with-cost equity curves/trades against this hand-verified
+case, the open-position edge case, the `max_drawdown` running-max-vs-naive
+discriminator, boundary conditions (series exactly at/shorter than
+`long_window`), invalid-param `ValueError`s, and finiteness. One real bug
+caught during this process: the first draft of the hand-derived expected
+equity-curve list in the test itself was off by one bar (missing the i=14
+mark-to-market point between the death-cross signal and its T+1 fill) — the
+test failed against the (correct) implementation, not the other way around,
+which is exactly what independent verification is for.
+`engine/tests/test_backtest_service.py` separately covers orchestration
+wiring (monkeypatched `historical_data.load_price_history`, mirrors
+`test_options_service.py`'s style) — 66/66 tests pass repo-wide, no
+regressions.
+
+### Real-data proof
+
+`engine/scripts/run_backtest_demo.py` runs the default 50/200-day crossover
+against real AAPL history (2006-2026, 5031 bars): 8 closed trades + 1 open
+position, 2395.64% total return, 45.66% max drawdown, 62.5% win rate. Trade
+dates line up with known AAPL market history — entering before the 2008
+crash and exiting into it at a loss, capturing the 2009-2012 and 2019-2022
+bull runs, a quick loss in the 2022 whipsaw, currently in an open position
+since 2025-09-16 (correctly marked unrealized, not force-closed).
+
+### Next
+
+Phase 8 (no-code composer): user-configurable strategy parameters,
+universe-level/multi-ticker backtesting (where survivorship bias needs its
+own explicit treatment — not solved here), an engine endpoint once the UI
+needs one, and the overfitting-risk pedagogical handrail (users tweaking
+params until a curve looks good) — flagged this session, not designed yet.
+R2 upload is still separately deferred from 7.1, pending the user's
+Cloudflare setup.
