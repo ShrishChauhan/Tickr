@@ -353,6 +353,26 @@ export async function fetchOptionChain(ticker: string, expiration: string): Prom
   return res.json() as Promise<OptionChain>;
 }
 
+export type IndicatorType = 'SMA' | 'PRICE' | 'RSI';
+
+export interface IndicatorSchema {
+  type: IndicatorType;
+  window: number | null;
+}
+
+export type ComparatorType = 'CROSSES_ABOVE' | 'CROSSES_BELOW';
+
+export interface RuleSchema {
+  left: IndicatorSchema;
+  comparator: ComparatorType;
+  right: IndicatorSchema | number;
+}
+
+export interface StrategySchema {
+  entry: RuleSchema;
+  exit: RuleSchema;
+}
+
 export async function fetchOptionCalculation(
   ticker: string,
   expiration: string,

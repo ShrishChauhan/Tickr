@@ -59,6 +59,9 @@ export default function TopNav({ instant }: TopNavProps) {
         <a href="/options" className={styles.link}>
           Options
         </a>
+        <a href="/backtest" className={styles.link}>
+          Backtest
+        </a>
         {!loading &&
           (user ? (
             <>
