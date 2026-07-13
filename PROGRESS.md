@@ -1557,3 +1557,233 @@ Phase 8 continues unchanged: engine endpoint + Pydantic schema once a UI
 needs one, universe-level/multi-ticker backtesting, the overfitting-risk
 pedagogical handrail, and MACD/Bollinger as further indicators once each has
 its own hand-verified formula.
+
+## Session 36 (Phase 8, slice 4 — composer frontend, Session 1) — rule-builder UI shell — 2026-07-13
+
+Note: slice 3 (the `POST /backtest/{ticker}` engine endpoint + Pydantic
+schema this session builds against) landed in commit `1ff6367` but was never
+given its own PROGRESS.md entry — a pre-existing documentation gap, not
+backfilled here since this session didn't do that work and can't speak to
+its design decisions firsthand. Its `params` echo (`entry_rule`/`exit_rule`/
+`cost_pct`/`starting_capital`) and error mapping (404 `HistoricalDataError`,
+400 validation) were read directly from `engine/app/schema/backtest.py` and
+`engine/app/api/routes.py` to build against.
+
+First UI on top of the rule-based backtester. Planned in a separate design
+session (chunked into 3: this one, wiring + results, then end-to-end
+verification + polish — mirroring Phase 6.3's options-calculator A/B/C
+split) before any code, since it's the biggest remaining piece of Phase 8's
+core arc. This session builds only the composer shell and rule-builder UI —
+ticker + strategy state in the browser, no backend calls yet.
+
+New route `web/app/backtest/page.tsx`, holding `{ ticker, start, end,
+strategy: StrategySchema }` page state. Reused conventions rather than
+inventing new ones: the ticker typeahead is the same inline hand-rolled
+debounce/dropdown/chip pattern already duplicated in `/options` and
+`/compare` (replicated a third time rather than extracted, matching the
+repo's existing choice not to extract after the first duplication, and
+CLAUDE.md's YAGNI stance on premature abstraction).
+
+Two new components in `web/components/backtest/`: `IndicatorPicker` (type
+select — SMA/PRICE/RSI — plus a `window` input that only renders when
+`type !== 'PRICE'`, same conditional-field mechanism as the options page's
+IV override) and `RuleBuilder` (left `IndicatorPicker` → comparator toggle
+→ right-hand toggle). The one genuinely new pattern: `right` on a `Rule` is
+`IndicatorSchema | number` in the schema, so `RuleBuilder` adds a
+Value/Indicator two-button toggle (same CSS as the options page's
+call/put toggle) that switches the right-hand input between a plain number
+field and a second `IndicatorPicker`. Toggling resets `right` to a fresh
+default rather than preserving a draft across the switch — same "reset
+downstream state on a structural change" convention the options page already
+uses (e.g. `selectExpiration` resetting `selectedStrike`/`ivInput`).
+
+Entry and exit rules are stacked vertically (not side-by-side) as two
+labeled cards — each `RuleBuilder` already has 3-5 controls, and every
+existing precedent in this app (`/options`, `/compare`) is a single-column
+vertical cascade, not side-by-side panels.
+
+Submit gating built now rather than deferred: `isStrategyValid(ticker,
+strategy)` (ticker selected, both rules' indicators have a `window` wherever
+their type requires one, the right-hand value is a real number when in
+Value mode) drives the "Run Backtest" button's `disabled` prop directly —
+mirrors `SavedComparisonsPanel`'s disable-until-valid pattern rather than a
+reactive error shown after a submit attempt. The button has no click handler
+yet; that's the next session.
+
+A temporary `<pre>{JSON.stringify(...)}</pre>` debug block renders the live
+`{ ticker, start, end, strategy }` state so the `StrategySchema` shape and
+the disabled/enabled button transitions could be checked by hand without a
+network call — removed once real results replace it next session. Also
+added a `Backtest` link to `TopNav` alongside the other feature routes, and
+added `IndicatorType`/`IndicatorSchema`/`ComparatorType`/`RuleSchema`/
+`StrategySchema` types to `lib/api.ts` (typed to match
+`engine/app/schema/backtest.py` field-for-field) for reuse once the actual
+fetch call is wired.
+
+**Verification:** `tsc --noEmit` clean. `eslint` on the new/touched files
+surfaces exactly the same 2 `react-hooks/set-state-in-effect` findings the
+replicated typeahead pattern already has in `/options` and `/compare`
+(confirmed by linting `/options` directly — identical two errors, same
+lines relative to the effect) — a known, accepted pattern per Session 27,
+not a new problem. `curl`'d the running dev server's rendered
+`/backtest` HTML and confirmed the ticker search input, both rule cards, and
+the Run Backtest button are present. Full interactive browser verification
+(chromium-cli/Playwright) wasn't available in this environment — deferred to
+Session 3, which already covers an end-to-end browser walkthrough.
+
+### Next
+
+Session 2 of the composer arc: wire "Run Backtest" to `POST
+/backtest/{ticker}`, add `EquityCurveChart` (recharts `LineChart`, matching
+`PriceOnlyPage.tsx`'s existing usage), `SummaryStatsCards` (hardcoded static
+explanatory copy per stat, since `BacktestResponse` — unlike the options
+Greeks — carries no computed per-stat narration to source from), a
+`MethodologyLine` disclosure (cost_pct/starting_capital/effective date range/
+bar-timing convention), and a `TradeTable`. Verify against the already-known
+AAPL SMA(50/200) numbers (2395.64%/8 trades). Then Session 3: full browser
+walkthrough, a second verification case (AAPL RSI mean-reversion,
+128.5%/16 trades/81.25% win rate), edge-case UX (no-local-data 404, empty
+num_trades), and a PROGRESS.md/CLAUDE.md close-out entry for the whole arc.
+
+## Session 37 (Phase 8, slice 4 — composer frontend, Session 3) — end-to-end browser verification, edge cases, close-out — 2026-07-13
+
+Note, discovered this session: composer Session 2 (wiring + results display,
+commit `2a61e01`) also has no dedicated PROGRESS.md entry of its own — the
+same documentation gap Session 36 flagged for slice 3's engine endpoint
+(commit `1ff6367`), now doubled. Both commits carry thorough messages
+(design rationale, files touched, verification performed) so the record
+isn't lost, just not in this log's usual place. Flagging again, not
+backfilling either — consistent with how Session 36 originally treated it.
+
+Playwright (`playwright ^1.61.1`) is already a `web/` devDependency with
+Chromium pre-downloaded (`chromium-1228`) — Session 36's note that
+"chromium-cli/Playwright wasn't available in this environment" turned out to
+be about a missing pre-registered tool, not a missing package. Running
+`node` scripts against the local `playwright` install (invoked from inside
+`web/` so module resolution finds it) drove a real headless Chromium for
+every check in this session.
+
+**Full walkthrough, built from a blank page (not pre-filled):** typed into
+the ticker search, selected AAPL from the live `/search` dropdown, filled the
+Entry Rule (SMA(50) crosses above SMA(200)), and — per this session's brief —
+explicitly exercised the Value↔Indicator toggle at least once before
+finalizing: switched the entry rule's right-hand side to Value, typed a
+throwaway number, switched back to Indicator, and confirmed the field reset
+to a fresh blank-window SMA rather than preserving the discarded value (the
+reset-on-toggle behavior from Session 36 still holds). Filled the Exit Rule
+(SMA(50) crosses below SMA(200)). Checked the Run Backtest button's disabled
+state after every single field change, not just at the start and end: it
+stayed disabled through ticker selection and both partially-filled rules,
+and flipped to enabled at exactly the moment the last required field (exit
+rule's right-hand window) was filled — not before, not needing an extra
+render. Submitted and confirmed the results section rendered.
+
+**SMA verification (first proof point, trend-following path):** displayed
+numbers were an exact match to Session 32/36's known-good values —
+**total return +2395.64%, 8 trades, max drawdown -45.66%, win rate 62.50%,
+open position at end**. Equity curve, summary cards, trade table (8 rows,
+correct entry/exit dates and P&L), and methodology line (date range, $100,000
+starting capital, 0.10% cost/side, bar-timing disclosure) all rendered
+correctly once the browser viewport was resized to the page's actual
+`scrollHeight` before the screenshot — full-page screenshots taken at a
+viewport shorter than the content came back with everything below the
+original viewport blank, even though `getBoundingClientRect()` confirmed the
+DOM was fully laid out and visible; this is a Playwright/Chromium full-page
+screenshot quirk with tall dynamically-sized content, not an app bug (worth
+remembering for any future headless-browser session in this repo).
+
+**RSI verification (second proof point, mean-reversion path — this
+session's actual new coverage, since Session 2 only proved the SMA path
+through the UI):** built RSI(14) crosses-below-30 (entry) / crosses-above-70
+(exit) on AAPL through the real UI, including switching both rules' left
+indicator from SMA to RSI and both comparators away from their defaults.
+Result: **total return +128.50%, 16 trades, max drawdown -57.26%, win rate
+81.25%, flat at end** — an exact match to Session 35's backend-only numbers,
+now confirmed through the full composer UI.
+
+**Edge cases:**
+- **No-local-data ticker:** searched "gold", selected `GC=F` (Gold Aug '26
+  futures — a real `/search` result, not a fabricated ticker) since it's a
+  commodity outside the 567-ticker equity/ETF Parquet backfill. Submitting a
+  valid SMA(50/200) strategy against it rendered "No historical data for
+  GC=F." — the distinct 404 path, reached via the real UI flow this time,
+  not the isolated error-path test from Session 2.
+- **Zero-trade strategy:** built RSI(14) crosses below -100 as the entry rule
+  (RSI is bounded to [0, 100], so this can never fire) on AAPL. The button
+  was still *enabled* — correctly distinguishing "a valid strategy that
+  happens to produce no trades" from "an incomplete form" — and the results
+  rendered `num_trades: 0`, `total_return_pct: +0.00%`, `Flat`, and Win Rate
+  as **"N/A — no closed trades"**, not "0%" and not a crash.
+- **Client-side validation is real, not cosmetic:** left the entry rule's
+  left-indicator window blank and confirmed Run Backtest stayed genuinely
+  disabled. Forced a raw click dispatch at the DOM level anyway (bypassing
+  Playwright's normal actionability checks) to confirm a `disabled` native
+  `<button>` truly blocks the click handler from firing under any dispatch
+  method, not just a visual/CSS disabled state — no results section
+  appeared, no 400 round-trip occurred.
+
+**Light polish pass (placeholder-quality bar only):** checked layout at a
+390px viewport (build-from-scratch flow + results, both empty and filled).
+No horizontal page overflow (`scrollWidth === clientWidth`); the trade table
+correctly scrolls within its own `overflow-x: auto` container rather than
+blowing out the page, per the repo's existing wide-content convention. One
+cosmetic-only artifact noted and deliberately left as-is: `SummaryStatsCards`'
+flex header row (`justify-content: space-between`) lets the "Win Rate" label
+wrap to two lines when paired with the long "N/A — no closed trades" value
+at the grid's 220px minimum card width — readable, not overlapping, and
+fixing it would be exactly the kind of new visual investment this session's
+brief scoped out. Skimmed all `backtest/` components for leftover debug
+code: none found — Session 1's temporary `<pre>{JSON.stringify(...)}</pre>`
+block was already removed in Session 2 per its commit message, and no stray
+`console.log`s or stale "next session" comments remain.
+
+**Verification:** `tsc --noEmit` clean. `eslint` on every touched/new file
+surfaces only pre-existing findings: the same 2 accepted
+`react-hooks/set-state-in-effect` results on the typeahead debounce (Session
+27/36's known pattern) and one unrelated `no-html-link-for-pages` on the
+Search-tab `<a href="/">` link that predates this entire arc and isn't
+touched by the Backtest nav-link addition. No new lint findings.
+
+### Arc summary — Phase 8 composer (Sessions 34–37)
+
+This closes the full rule-based backtest composer arc, front to back:
+- **Session 34** — generalized the MA-crossover mechanism into a rule
+  vocabulary (`Indicator`/`Rule`/`Strategy`, NaN-safe edge detection) proven
+  equivalent to the original on hand-verified and real data.
+- **Session 35** — added RSI as a second indicator (Wilder's convention,
+  hand-verified warmup boundary), proving the vocabulary generalizes to a
+  genuinely different indicator family (mean-reversion, not just
+  trend-following).
+- **Slice 3, commit `1ff6367`** (undocumented as its own session, flagged in
+  Session 36 and again here) — `POST /backtest/{ticker}` + Pydantic schema,
+  curl-verified against both known strategies.
+- **Session 36 (composer Session 1)** — the rule-builder UI shell:
+  `IndicatorPicker`, `RuleBuilder`, the Value/Indicator toggle, client-side
+  submit gating. No backend call yet.
+- **Composer Session 2, commit `2a61e01`** (undocumented as its own session,
+  flagged for the first time here) — wired the button to the endpoint;
+  built `EquityCurveChart`, `SummaryStatsCards`, `MethodologyLine`,
+  `TradeTable`; verified the SMA case via curl and one browser pass.
+- **Session 37 (this session)** — the independent, from-scratch browser
+  proof: both the trend-following (SMA) and mean-reversion (RSI) paths
+  reproduce their known-good numbers exactly through the real UI, not just
+  via direct backend calls; the 404/zero-trade/incomplete-form edge cases
+  all render correctly; a light responsive pass found nothing genuinely
+  broken.
+
+A user can now go from a blank `/backtest` page to a fully-specified
+entry/exit rule strategy (SMA or RSI, either side of either rule, crossing
+either direction, against a value or another indicator) and see results with
+a full methodology disclosure — with no engine code changes required beyond
+what slice 3 already shipped.
+
+### Explicitly still out of scope (deliberate boundary, not an oversight)
+
+No saved-strategies persistence, no multi-ticker/universe backtesting
+(survivorship bias still needs its own future treatment), no
+rule-combination (AND/OR) logic, no overfitting-risk pedagogical handrail.
+These were genuinely out of scope for this arc's brief, not abandoned
+mid-stream — the arc ends here as a deliberate scope boundary. Also still
+open, carried over unchanged from Sessions 34–36: further indicators
+(MACD, Bollinger), and the two documentation gaps noted above (slice 3 and
+composer Session 2 each still lack their own PROGRESS.md entry).
