@@ -22,6 +22,9 @@ alembic/versions/__pycache__/
 *.db
 *.sqlite3
 
+# Historical OHLC backfill (Phase 7.1) — bulk generated data, not source
+engine/data_historical/
+
 # Node / Next.js
 node_modules/
 .next/

@@ -1361,3 +1361,57 @@ needs one, and the overfitting-risk pedagogical handrail (users tweaking
 params until a curve looks good) — flagged this session, not designed yet.
 R2 upload is still separately deferred from 7.1, pending the user's
 Cloudflare setup.
+
+## Session 33 (P7.1 follow-up) — R2 upload + DuckDB-over-HTTP verification — 2026-07-13
+
+Closes out the R2 deferral from Session 31: user finished Cloudflare account/
+bucket/API-token setup, this session uploads the 567 local Parquet files and
+proves DuckDB can query them over HTTP the same way `probe_duckdb_local.py`
+proved for local disk.
+
+### What got built
+
+- `duckdb>=1.5.0` (already present from 7.1) plus `boto3>=1.34.0` added to
+  `engine/pyproject.toml` — boto3 for the one-time S3-compatible upload only,
+  not a long-term dependency of any service.
+- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
+  `R2_BUCKET_NAME`, `R2_ENDPOINT_URL` added to `Settings` (`config.py`) and
+  `.env.example` (placeholder values only). Real values live in the user's
+  local `.env`, not committed.
+- `engine/scripts/upload_to_r2.py` — one-time upload of all 567 local
+  `data_historical/*.parquet` files to the R2 bucket via `boto3`'s S3 client
+  pointed at the R2 endpoint, preserving filenames so the existing
+  glob-based `read_parquet('*.parquet')` query pattern works unchanged once
+  pointed at R2. Ends with a bucket sanity check (object count + total size
+  against the local numbers).
+- `engine/tests/probe_duckdb_r2.py` — mirrors `probe_duckdb_local.py`'s
+  cross-file query and per-ticker spot checks, but against
+  `r2://<bucket>/*.parquet` over HTTP. Uses DuckDB's current recommended R2
+  auth path, `CREATE SECRET (TYPE r2, KEY_ID ?, SECRET ?, ACCOUNT_ID ?)`, not
+  the legacy `SET s3_endpoint`/`SET s3_url_style` statements — credentials
+  are bound parameters, never interpolated into query text.
+- `engine/data_historical/` (the 117 MB of local Parquet) already gitignored
+  from Session 31 — no change needed there.
+
+### Verified
+
+Ran `upload_to_r2.py` end-to-end: 567/567 files uploaded, bucket sanity
+check confirmed 567 objects matching local size. Ran `probe_duckdb_r2.py`
+against the live bucket: cross-file query over R2-via-HTTP returned the
+identical 2,588,596 total rows / 567 distinct tickers as the local probe,
+and all four spot-check tickers (AAPL, MMM, TCS.NS, RELIANCE.NS) matched
+row counts, date ranges, and latest close exactly.
+
+### Scope note
+
+This session proves the mechanism only — `historical_data.py` (Session 32)
+still reads local Parquet, not R2. Cutting production reads over to R2 is a
+separate decision (tradeoff: R2 removes the "data isn't in a fresh clone"
+problem Session 31 hit, at the cost of network latency per query vs. local
+disk) — not made here, since nothing currently forces the choice.
+
+### Next
+
+Phase 8 (no-code composer) — see Session 32's Next section, unchanged. The
+R2-vs-local decision for `historical_data.py` can be revisited whenever
+Phase 8 or deployment actually needs it settled.
