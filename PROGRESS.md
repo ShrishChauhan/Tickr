@@ -1415,3 +1415,85 @@ disk) — not made here, since nothing currently forces the choice.
 Phase 8 (no-code composer) — see Session 32's Next section, unchanged. The
 R2-vs-local decision for `historical_data.py` can be revisited whenever
 Phase 8 or deployment actually needs it settled.
+
+## Session 34 (Phase 8, slice 1) — rule-based strategy model, backend design only — 2026-07-13
+
+First Phase 8 slice: generalized Session 32's hardcoded MA-crossover into a
+small rule vocabulary a no-code composer can eventually assemble via
+dropdowns (`[indicator] [comparator] [value or indicator]`), using the
+existing MA-crossover as the proof case rather than throwing it away.
+Deliberately narrow: no UI, no endpoint, no Pydantic schema, no new
+indicator math (RSI/MACD/Bollinger deferred), no universe-level backtesting,
+no overfitting handrail. Plan-mode design first, same discipline as Sessions
+28/32.
+
+### The rule data model
+
+- Indicators (v1, minimal): `SMA(window)`, `PRICE` (identity). RSI left out
+  deliberately — it needs its own hand-verified formula before anything
+  trusts it, and isn't needed to prove the concept: `SMA`+`PRICE` already
+  express two genuinely different well-known strategies (MA/MA crossover,
+  and price/200-SMA trend-follow), not just a re-skin of one case.
+- Comparators (v1, minimal): `CROSSES_ABOVE`, `CROSSES_BELOW` only. A bare
+  "greater than" isn't a third comparator here — entry/exit are single-shot,
+  edge-triggered trade events (not continuous position filters), so
+  `CROSSES_ABOVE(indicator, 70)` already covers "value" comparisons like
+  RSI>70 once RSI exists. A genuinely stateful filter (AND-ed with a
+  trigger) is a distinct, deferred future feature needing rule-combination
+  logic not built here.
+- Plain frozen dataclasses (`Indicator`, `Rule`, `Strategy`), no Pydantic —
+  same YAGNI call Session 32 made for `Trade`/`BacktestResult`: no endpoint
+  yet to define a wire shape for.
+- The one real hazard, named and solved: plain pandas comparison treats
+  `NaN > x` as `False`, not `NaN` — a naive general comparator would
+  silently coerce an indicator's warmup period into "condition not met,"
+  risking a false edge exactly at the warmup boundary (the same boundary
+  `detect_crossovers`'s explicit `pd.isna` check was written to protect in
+  Session 32). Solved with a NaN-safe `_safe_compare` that produces `NaN`
+  (not `False`) whenever either operand is undefined, feeding the same
+  reset-on-NaN edge detector `detect_crossovers` already used.
+
+### Engine restructuring
+
+Extracted (not rewritten) the shared execution loop — bar-timing (signal at
+T, fill at T+1), transaction cost, fractional-share sizing, running-max
+drawdown — out of `ma_crossover.run_backtest` into a new neutral
+`engine/app/services/backtest_core.py` (`Trade`, `BacktestResult`,
+`max_drawdown`, `run_signal_backtest`), taking precomputed entry/exit bar
+indices instead of computing them itself. `ma_crossover.py` is now a thin
+wrapper: keeps `sma`/`detect_crossovers` (genuinely MA-specific), re-exports
+`Trade`/`BacktestResult`/`max_drawdown` from `backtest_core` so every
+existing import kept working with **zero edits to `test_ma_crossover.py` or
+`backtest.py`**. New `engine/app/services/rule_engine.py` holds
+`Indicator`/`Rule`/`Strategy`, `detect_rising_edges`, and
+`run_rule_backtest`, calling the same shared `backtest_core.run_signal_backtest`.
+Neither `ma_crossover.py` nor `rule_engine.py` depends on the other — both
+depend only on the neutral core, so a future third strategy type doesn't
+require touching either.
+
+### Numerical correctness — verified, not eyeballed
+
+`test_ma_crossover.py` passes unmodified against the refactored
+`ma_crossover.py` (proof the extraction changed nothing). New
+`engine/tests/test_rule_engine.py`: unit tests for `Indicator.compute` and
+the NaN-reset edge detector (including a discriminating case proving NaN is
+never coerced to a false edge at the warmup boundary); parity tests
+expressing the MA-crossover as a `Strategy` and asserting
+`run_rule_backtest` reproduces `ma_crossover.run_backtest`'s exact
+trades/equity-curve/return/drawdown/win-rate on both the 18-bar hand-verified
+synthetic series (zero-cost, with-cost, and open-position-at-end cases) *and*
+real AAPL data (5031 bars, 2006–2026) — the real regression proof, since the
+synthetic case never exercises multiple crossovers or 20 years of warmup the
+way AAPL does. Also proved a second, genuinely different strategy (price
+crosses its own 200-day SMA) runs and produces finite results, confirming
+the vocabulary generalizes rather than just re-encoding one case. 78/78
+tests pass repo-wide (66 pre-existing + 12 new), no regressions; re-ran
+`run_backtest_demo.py` and confirmed the exact same AAPL numbers as Session
+32 (2395.64% return, 8 closed trades, 45.66% max drawdown).
+
+### Next
+
+Phase 8 continues: an engine endpoint + Pydantic schema once a UI needs one,
+universe-level/multi-ticker backtesting (survivorship bias needs its own
+treatment), the overfitting-risk pedagogical handrail, and eventually RSI/
+other indicators once each has its own hand-verified formula.
