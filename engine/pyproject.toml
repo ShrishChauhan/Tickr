@@ -17,6 +17,10 @@ dependencies = [
     # psycopg2-binary requires PostgreSQL to be configured — see PROGRESS.md
     "psycopg2-binary>=2.9.0",
     "groq>=0.9.0",
+    # historical OHLC backfill + backtester queries (Phase 7.1) — Parquet-over-DuckDB, no DB server
+    "duckdb>=1.5.0",
+    # R2 upload (S3-compatible) — Phase 7.1 follow-up
+    "boto3>=1.34.0",
 ]
 
 [project.optional-dependencies]

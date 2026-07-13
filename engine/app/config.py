@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     SEC_IDENTITY: str = "contact@example.com"
     # Finnhub — real-time US equity quotes (B4); blank disables, falls through to yfinance
     FINNHUB_API_KEY: str = ""
+    # Cloudflare R2 — historical Parquet storage (Phase 7.1 follow-up)
+    R2_ACCOUNT_ID: str = ""
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET_NAME: str = ""
+    R2_ENDPOINT_URL: str = ""
 
     # extra="ignore": .env is shared with the web app (Supabase vars etc.) —
     # this service doesn't declare those fields and shouldn't reject them
