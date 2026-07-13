@@ -7,6 +7,9 @@ from .price_only import PriceOnlyData, OHLCBar
 from .screener import ScreenerFields, ScreenerRow
 from .explain import ExplainRequest, ExplainResult
 from .options import OptionContract, OptionChain, OptionExpirations, GreeksInputs, GreeksExplanations, GreeksResult
+from .backtest import (
+    IndicatorSchema, RuleSchema, StrategySchema, BacktestRequest, TradeSchema, BacktestResponse,
+)
 
 __all__ = [
     "CompanyIdentity", "Market", "Exchange", "Currency",
@@ -17,4 +20,5 @@ __all__ = [
     "ScreenerFields", "ScreenerRow",
     "ExplainRequest", "ExplainResult",
     "OptionContract", "OptionChain", "OptionExpirations", "GreeksInputs", "GreeksExplanations", "GreeksResult",
+    "IndicatorSchema", "RuleSchema", "StrategySchema", "BacktestRequest", "TradeSchema", "BacktestResponse",
 ]

@@ -27,16 +27,19 @@ from ..schema.fundamentals import Period
 from ..schema.filings import FilingType
 from ..schema.explain import ExplainRequest, ExplainResult
 from ..schema.options import OptionExpirations, OptionChain, GreeksResult
+from ..schema.backtest import BacktestRequest, BacktestResponse
 from ..services import company as company_service
 from ..services import fundamentals as fundamentals_service
 from ..services import price as price_service
 from ..services import screener as screener_service
 from ..services import explain as explain_service
 from ..services import options as options_service
+from ..services import backtest as backtest_service
 from ..services.company import CompanyLookupError, EXCHANGE_DISPLAY
 from ..services.fundamentals import FundamentalsLookupError
 from ..services.price import PriceLookupError
 from ..services.options import OptionsLookupError
+from ..services.historical_data import HistoricalDataError
 from ..services.universes import load_universe, UnknownUniverseError
 
 router = APIRouter()
@@ -336,3 +339,16 @@ async def calculate_option_greeks(
         return await options_service.calculate(_cache, ticker, expiration, strike, type, iv)
     except OptionsLookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/backtest/{ticker}", response_model=BacktestResponse)
+async def run_backtest(ticker: str, request: BacktestRequest):
+    try:
+        return backtest_service.run_ticker_rule_backtest(
+            ticker, request.strategy, request.cost_pct, request.starting_capital,
+            request.start, request.end,
+        )
+    except HistoricalDataError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
