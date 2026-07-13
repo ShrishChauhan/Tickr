@@ -227,3 +227,35 @@ def test_rule_against_scalar_value():
     # the condition went false in between.
     edges = rule.evaluate(prices)
     assert edges == [9, 17]
+
+
+# ---------------------------------------------------------------------------
+# RSI: NaN-warmup discriminating edge test (mirrors the SMA-warmup
+# discriminating tests above) and a full mean-reversion Strategy against
+# real AAPL data.
+# ---------------------------------------------------------------------------
+
+def test_rsi_indicator_no_false_edge_at_warmup_boundary():
+    # RSI(5)'s first defined value is at index 5 (see test_indicators.py).
+    # A rule of RSI CROSSES_BELOW some threshold must not register a false
+    # edge merely because the warmup NaNs end -- there must be a genuine
+    # defined-to-defined transition.
+    prices = pd.Series([100, 102, 101, 103, 105, 104, 106, 108], dtype=float)
+    rule = Rule(Indicator("RSI", 5), "CROSSES_BELOW", 200.0)  # never true once defined
+    assert rule.evaluate(prices) == []
+
+
+def test_rsi_mean_reversion_strategy_runs_and_is_finite():
+    df = load_price_history("AAPL")
+    dates, prices = df["date"], df["adj_close"]
+    rsi14 = Indicator("RSI", 14)
+    strategy = Strategy(
+        entry=Rule(rsi14, "CROSSES_BELOW", 30.0),
+        exit=Rule(rsi14, "CROSSES_ABOVE", 70.0),
+    )
+
+    result = run_rule_backtest(dates, prices, strategy)
+    assert math.isfinite(result.total_return_pct)
+    assert math.isfinite(result.max_drawdown_pct)
+    assert all(math.isfinite(v) for v in result.equity_curve)
+    assert result.num_trades > 0  # AAPL crosses RSI 30/70 many times over 20y

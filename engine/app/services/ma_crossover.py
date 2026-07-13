@@ -35,12 +35,9 @@ import pandas as pd
 
 from . import backtest_core
 from .backtest_core import BacktestResult, Trade, max_drawdown
+from .indicators import sma
 
 __all__ = ["Trade", "BacktestResult", "max_drawdown", "sma", "detect_crossovers", "run_backtest"]
-
-
-def sma(prices: pd.Series, window: int) -> pd.Series:
-    return prices.rolling(window).mean()
 
 
 def detect_crossovers(short_ma: pd.Series, long_ma: pd.Series) -> list[tuple[int, str]]:

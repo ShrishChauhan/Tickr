@@ -5,12 +5,12 @@ backend data model + evaluation for that, proven against ma_crossover.py's
 existing hand-verified MA-crossover as the first instance (see
 test_rule_engine.py's parity tests).
 
-Deliberately minimal v1 vocabulary — two indicators (SMA, PRICE), two
+Deliberately minimal vocabulary — three indicators (SMA, PRICE, RSI), two
 comparators (CROSSES_ABOVE, CROSSES_BELOW). A bare "greater than" is not a
 third comparator here: entry/exit are single-shot, edge-triggered trade
 events (bar-timing, one signal per transition), not continuous position
 filters, so "RSI greater than 70" is already expressible as
-CROSSES_ABOVE(RSI, 70) once RSI exists. A genuinely stateful filter
+CROSSES_ABOVE(RSI, 70). A genuinely stateful filter
 ("only trade while price > 200-SMA", AND-ed with a separate trigger) is a
 distinct future feature needing rule-combination logic not built here.
 
@@ -25,16 +25,16 @@ import pandas as pd
 
 from . import backtest_core
 from .backtest_core import BacktestResult
-from .ma_crossover import sma
+from .indicators import rsi, sma
 
-IndicatorType = Literal["SMA", "PRICE"]
+IndicatorType = Literal["SMA", "PRICE", "RSI"]
 ComparatorType = Literal["CROSSES_ABOVE", "CROSSES_BELOW"]
 
 
 @dataclass(frozen=True)
 class Indicator:
     type: IndicatorType
-    window: Optional[int] = None  # required for SMA, unused for PRICE
+    window: Optional[int] = None  # required for SMA/RSI, unused for PRICE
 
     def compute(self, prices: pd.Series) -> pd.Series:
         if self.type == "PRICE":
@@ -43,6 +43,10 @@ class Indicator:
             if not self.window or self.window < 1:
                 raise ValueError("SMA indicator requires window >= 1")
             return sma(prices, self.window)
+        if self.type == "RSI":
+            if not self.window or self.window < 1:
+                raise ValueError("RSI indicator requires window >= 1")
+            return rsi(prices, self.window)
         raise ValueError(f"Unknown indicator type: {self.type}")
 
 
