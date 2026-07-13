@@ -373,6 +373,53 @@ export interface StrategySchema {
   exit: RuleSchema;
 }
 
+export interface BacktestRequestPayload {
+  strategy: StrategySchema;
+  cost_pct: number;
+  starting_capital: number;
+  start: string | null;
+  end: string | null;
+}
+
+export interface TradeSchema {
+  entry_date: string;
+  entry_price: number;
+  exit_date: string | null;
+  exit_price: number | null;
+  pnl: number | null;
+  pnl_pct: number | null;
+  status: 'closed' | 'open';
+}
+
+export interface BacktestResponse {
+  ticker: string;
+  dates: string[];
+  equity_curve: number[];
+  trades: TradeSchema[];
+  total_return_pct: number;
+  max_drawdown_pct: number;
+  num_trades: number;
+  win_rate_pct: number | null;
+  final_status: 'flat' | 'open';
+  params: Record<string, unknown>;
+}
+
+export async function fetchBacktest(
+  ticker: string,
+  request: BacktestRequestPayload,
+): Promise<BacktestResponse> {
+  const res = await fetch(`${BASE_URL}/api/v1/backtest/${encodeURIComponent(ticker)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, body.detail ?? res.statusText);
+  }
+  return res.json() as Promise<BacktestResponse>;
+}
+
 export async function fetchOptionCalculation(
   ticker: string,
   expiration: string,
