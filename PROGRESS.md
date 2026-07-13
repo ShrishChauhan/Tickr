@@ -1497,3 +1497,63 @@ Phase 8 continues: an engine endpoint + Pydantic schema once a UI needs one,
 universe-level/multi-ticker backtesting (survivorship bias needs its own
 treatment), the overfitting-risk pedagogical handrail, and eventually RSI/
 other indicators once each has its own hand-verified formula.
+
+## Session 35 (Phase 8, slice 2) — RSI as second indicator — 2026-07-13
+
+Added RSI to the rule engine's vocabulary (`SMA`, `PRICE`, now `RSI`),
+resolving the methodology question Session 34 deliberately deferred: RSI is
+not one universally-agreed formula, and a plausible-but-wrong implementation
+is the same risk class as Black-Scholes' theta/rho unit conventions.
+
+**Methodology, confirmed live (StockCharts, Wikipedia, QuantInsti, TC2000,
+July 2026):** implemented Wilder's original RSI (simple average of the first
+`window` gains/losses, then Wilder's smoothing recurrence
+`avg = (prev*(window-1) + current)/window`) rather than Cutler's variant
+(plain SMA of gains/losses throughout, invented to remove Wilder's
+"data-length dependency"). Wilder's is what every mainstream charting
+platform/library means by "RSI" by default, and the data-length-dependency
+property Cutler's fixes doesn't matter here — this backtester always
+computes over one fixed, complete historical series, never splices/resumes
+mid-history. A fully reliable worked example wasn't extractable from the web
+as verbatim text (StockCharts'/Macroption's tables are image/spreadsheet
+embeds); built and independently cross-checked a 12-bar synthetic series
+(window=5) instead, same fallback approach used for the MA-crossover's
+18-bar oracle in Session 32 — first two values verified via exact fractions
+(75.0, 400/21), the rest to 6 decimal places via an isolated calculation run
+separately from the production implementation.
+
+**Warmup boundary, precisely nailed down:** RSI needs one *more* warmup bar
+than an SMA of the same window, because it operates on price differences
+(starting at index 1), not raw prices — first defined RSI lands at index
+`window`, not `window - 1`. Tested explicitly (`test_rsi_matches_sma_offset_by_one_extra_warmup_bar`),
+not just "eventually becomes defined."
+
+**Restructuring:** extracted `sma()`/new `rsi()` into a new
+`engine/app/services/indicators.py` — `rule_engine.py`'s own docstring
+already scoped indicator math as out-of-scope for it, and a second real
+indicator function is exactly the trigger Session 34 used to extract
+`backtest_core.py` (shared code gets a neutral home once a second genuine
+consumer exists). `ma_crossover.py` now does `from .indicators import sma`
+and re-exports it via `__all__` — zero breaking change, same re-export
+technique already used for `Trade`/`BacktestResult`; `test_ma_crossover.py`
+passes unmodified. No changes needed to `Rule`/`Strategy`/`_safe_compare`/
+`detect_rising_edges` — `Indicator("RSI", 14)` returns a plain NaN-warmup
+`pd.Series` exactly like SMA, so `Rule(Indicator("RSI", 14), "CROSSES_BELOW", 30.0)`
+already composes through the existing NaN-safe machinery with zero new
+comparator types.
+
+New `test_indicators.py` (reference values, warmup boundary, avg-loss-zero
+edge case, insufficient-data case) plus new RSI tests in
+`test_rule_engine.py` (NaN-warmup discriminating edge test; a full
+mean-reversion `Strategy` — RSI(14) crosses below 30 → entry, above 70 →
+exit — against real AAPL data). 85/85 tests pass repo-wide (78 pre-existing
++ 7 new), no regressions. AAPL mean-reversion sanity check: 16 trades over
+20y, 128.5% return, 57.26% max drawdown, 81.25% win rate, flat at end —
+plausible.
+
+### Next
+
+Phase 8 continues unchanged: engine endpoint + Pydantic schema once a UI
+needs one, universe-level/multi-ticker backtesting, the overfitting-risk
+pedagogical handrail, and MACD/Bollinger as further indicators once each has
+its own hand-verified formula.
