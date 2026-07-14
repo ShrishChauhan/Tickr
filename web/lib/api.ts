@@ -306,6 +306,7 @@ export interface GreeksInputs {
   price_as_of: string;
   iv_as_of: string;
   r_as_of: string;
+  r_source: string;
   contract_last_trade_at: string | null;
 }
 

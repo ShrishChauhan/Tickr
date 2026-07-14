@@ -290,7 +290,7 @@ export default function OptionsPage() {
               </p>
               <p>
                 Price as of {result.inputs_used.price_as_of} · IV as of {result.inputs_used.iv_as_of} ·
-                {' '}rate as of {result.inputs_used.r_as_of}
+                {' '}rate as of {result.inputs_used.r_as_of} ({result.inputs_used.r_source})
                 {result.inputs_used.contract_last_trade_at &&
                   ` · contract last traded ${result.inputs_used.contract_last_trade_at}`}
               </p>
