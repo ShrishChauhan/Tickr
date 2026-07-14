@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     SEC_IDENTITY: str = "contact@example.com"
     # Finnhub — real-time US equity quotes (B4); blank disables, falls through to yfinance
     FINNHUB_API_KEY: str = ""
+    # FRED — authoritative risk-free rate (Phase 9.1); blank disables, falls back to yfinance ^IRX
+    FRED_API_KEY: str = ""
     # Cloudflare R2 — historical Parquet storage (Phase 7.1 follow-up)
     R2_ACCOUNT_ID: str = ""
     R2_ACCESS_KEY_ID: str = ""

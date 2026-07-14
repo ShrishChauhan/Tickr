@@ -117,6 +117,9 @@ async def test_calculate_call_unit_conversion(cache, patched_provider):
     assert result.inputs_used.iv_as_of
     assert result.inputs_used.r_as_of
     assert result.inputs_used.contract_last_trade_at == "2026-07-11T20:00:00+00:00"
+    # FRED_API_KEY is unset in the test environment, so FRED declines
+    # immediately and this falls back to the patched yfinance provider.
+    assert result.inputs_used.r_source == "yfinance"
 
 
 async def test_calculate_put_delta_bounds(cache, patched_provider):
@@ -156,6 +159,52 @@ async def test_calculate_tolerates_legacy_risk_free_rate_cache_entry(cache, patc
     result = await options_service.calculate(cache, "AAPL", expiration, 150.0, "call")
     assert result.inputs_used.r == pytest.approx(0.037)
     assert result.inputs_used.r_as_of
+
+
+async def test_calculate_prefers_fred_when_available(cache, patched_provider, monkeypatch):
+    # FRED primary: when it succeeds, its own observation date becomes
+    # r_as_of (not the fetch-time stamp) and r_source discloses the provider.
+    async def fake_fred_rate():
+        return 0.0371, "2026-07-10"
+    monkeypatch.setattr(options_service._fred_provider, "get_risk_free_rate", fake_fred_rate)
+
+    expiration = _future_expiration()
+    result = await options_service.calculate(cache, "AAPL", expiration, 150.0, "call")
+
+    assert result.inputs_used.r == pytest.approx(0.0371)
+    assert result.inputs_used.r_as_of == "2026-07-10"
+    assert result.inputs_used.r_source == "fred"
+
+
+async def test_calculate_falls_back_to_yfinance_when_fred_unavailable(cache, patched_provider, monkeypatch):
+    # FRED raising (blank key, network error, no valid observation) must fall
+    # back to the existing yfinance ^IRX path rather than propagate the error.
+    async def fake_fred_rate():
+        raise RuntimeError("FRED_API_KEY is not configured")
+    monkeypatch.setattr(options_service._fred_provider, "get_risk_free_rate", fake_fred_rate)
+
+    expiration = _future_expiration()
+    result = await options_service.calculate(cache, "AAPL", expiration, 150.0, "call")
+
+    assert result.inputs_used.r == pytest.approx(0.037)
+    assert result.inputs_used.r_source == "yfinance"
+
+
+async def test_cached_fred_rate_survives_a_cache_hit_unchanged(cache, patched_provider, monkeypatch):
+    # On a cache hit, the originally-fetched source/observation_date must be
+    # returned as-is, not re-derived — same contract as the pre-existing
+    # fetched_at-survives-a-cache-hit behavior this extends.
+    await cache.set("options:risk_free_rate",
+                     {"rate": 0.0371, "fetched_at": "2026-07-11T00:00:00+00:00",
+                      "source": "fred", "observation_date": "2026-07-10"},
+                     86_400)
+
+    expiration = _future_expiration()
+    result = await options_service.calculate(cache, "AAPL", expiration, 150.0, "call")
+
+    assert result.inputs_used.r == pytest.approx(0.0371)
+    assert result.inputs_used.r_as_of == "2026-07-10"
+    assert result.inputs_used.r_source == "fred"
 
 
 async def test_calculate_no_iv_no_override_raises(cache, monkeypatch):

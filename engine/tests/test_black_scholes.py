@@ -124,3 +124,33 @@ def test_theta_and_rho_are_finite():
     for fn in (theta_call, theta_put, rho_call, rho_put):
         v = fn(S, K, T, r, sigma, q)
         assert math.isfinite(v)
+
+
+# ---------------------------------------------------------------------------
+# Phase 9.1 FRED cutover: the risk-free rate changes from ^IRX to FRED's DTB3,
+# a genuinely (slightly) different but equally correct rate — not a bug to
+# match exactly. This proves the resulting Greeks move by exactly the amount
+# rho predicts for that rate gap, not by an unexplained/arbitrary amount.
+# ---------------------------------------------------------------------------
+
+def test_price_shift_from_irx_to_dtb3_rate_matches_rho_prediction():
+    S, K, T, sigma, q = 100.0, 100.0, 0.25, 0.25, 0.0
+    # 2026-07-08 live comparison (see Phase 9.1 plan): ^IRX 3.723% vs DTB3 3.73%.
+    r_irx = 0.03723
+    r_dtb3 = 0.0373
+    delta_r = r_dtb3 - r_irx
+
+    price_irx = call_price(S, K, T, r_irx, sigma, q)
+    price_dtb3 = call_price(S, K, T, r_dtb3, sigma, q)
+    rho_at_irx = rho_call(S, K, T, r_irx, sigma, q)  # dPrice/dr, decimal r
+
+    actual_shift = price_dtb3 - price_irx
+    predicted_shift = rho_at_irx * delta_r
+
+    # First-order (rho) approximation over a ~0.7bp rate gap — second-order
+    # curvature is negligible at this scale, so a tight tolerance is expected,
+    # not just "close enough."
+    assert actual_shift == pytest.approx(predicted_shift, abs=1e-6)
+    # And the shift itself should be tiny in dollar terms, consistent with a
+    # sub-basis-point rate change, not a meaningfully different price.
+    assert abs(actual_shift) < 0.01

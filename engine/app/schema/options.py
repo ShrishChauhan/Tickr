@@ -45,6 +45,10 @@ class GreeksInputs(BaseModel):
     price_as_of: str
     iv_as_of: str
     r_as_of: str
+    # Which provider produced the current risk-free rate ("fred" or
+    # "yfinance") — FRED is authoritative but daily/lagged; yfinance ^IRX is
+    # the resilience-chain fallback. Disclosed so r_as_of's meaning is clear.
+    r_source: str
     contract_last_trade_at: Optional[str] = None
 
 

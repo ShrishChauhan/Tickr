@@ -4,6 +4,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from ..adapters.fred import FredRiskFreeRateProvider
 from ..adapters.yfinance import YFinanceOptionsProvider
 from ..cache.base import CacheBackend
 from ..cache.ttl_config import OPTIONS_CHAIN_TTL_SECONDS, RISK_FREE_RATE_TTL_SECONDS
@@ -15,6 +16,7 @@ from . import black_scholes
 from . import price as price_service
 
 _provider = YFinanceOptionsProvider()
+_fred_provider = FredRiskFreeRateProvider()
 
 
 class OptionsLookupError(Exception):
@@ -65,23 +67,44 @@ async def get_chain(cache: CacheBackend, ticker: str, expiration: str) -> Option
     return result
 
 
-async def _get_risk_free_rate(cache: CacheBackend) -> tuple[float, str]:
+async def _get_risk_free_rate(cache: CacheBackend) -> tuple[float, str, str]:
+    """Returns (rate, r_as_of, source). FRED (DTB3) is primary — authoritative,
+    but republishes once/day with a multi-day lag; on any failure (key unset,
+    network error, no valid observation) falls back to yfinance ^IRX, matching
+    the resilience-chain idiom used elsewhere (provider_registry.py) rather
+    than serving a stale/absent rate. r_as_of is FRED's own observation date
+    when FRED served the rate (honest about the lag, not "now"); for the
+    yfinance fallback it's still the fetch-time stamp, since ^IRX carries no
+    finer-grained as-of of its own."""
     cache_key = "options:risk_free_rate"
 
     raw = await cache.get(cache_key)
     if raw is not None:
-        cached_fetched_at = raw.get("fetched_at")
-        if cached_fetched_at is not None:
-            return raw["rate"], cached_fetched_at
+        rate, fetched_at = raw.get("rate"), raw.get("fetched_at")
+        if rate is not None and fetched_at is not None:
+            source = raw.get("source", "yfinance")
+            r_as_of = raw.get("observation_date") or fetched_at
+            return rate, r_as_of, source
         # Legacy/malformed cache entry missing a field this code now relies on
         # (e.g. written before `fetched_at` existed) — treat as a miss and refetch
         # rather than crash on every request until the TTL expires.
 
-    rate = await _provider.get_risk_free_rate()
+    observation_date = None
+    try:
+        rate, observation_date = await _fred_provider.get_risk_free_rate()
+        source = "fred"
+    except Exception:
+        rate = await _provider.get_risk_free_rate()
+        source = "yfinance"
+
     fetched_at = datetime.now(timezone.utc).isoformat()
-    await cache.set(cache_key, {"rate": rate, "fetched_at": fetched_at}, RISK_FREE_RATE_TTL_SECONDS,
-                     data_type="risk_free_rate", ticker="^IRX", source="yfinance")
-    return rate, fetched_at
+    ticker = "DTB3" if source == "fred" else "^IRX"
+    await cache.set(cache_key,
+                     {"rate": rate, "fetched_at": fetched_at, "source": source, "observation_date": observation_date},
+                     RISK_FREE_RATE_TTL_SECONDS,
+                     data_type="risk_free_rate", ticker=ticker, source=source)
+    r_as_of = observation_date or fetched_at
+    return rate, r_as_of, source
 
 
 def _find_contract(contracts: list[OptionContract], strike: float) -> Optional[OptionContract]:
@@ -134,7 +157,7 @@ async def calculate(
     dividend_rate = await _provider.get_dividend_rate(ticker)
     q = (dividend_rate / S) if dividend_rate else 0.0
 
-    r, r_as_of = await _get_risk_free_rate(cache)
+    r, r_as_of, r_source = await _get_risk_free_rate(cache)
 
     # Approximate expiration as market close (16:00) on the expiration date —
     # T is precise to within hours either way, immaterial for day/week-scale contracts.
@@ -178,6 +201,7 @@ async def calculate(
             price_as_of=price_data.fetched_at,
             iv_as_of=chain.fetched_at,
             r_as_of=r_as_of,
+            r_source=r_source,
             contract_last_trade_at=contract.last_trade_date,
         ),
     )
