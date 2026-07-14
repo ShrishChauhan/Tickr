@@ -1787,3 +1787,87 @@ mid-stream — the arc ends here as a deliberate scope boundary. Also still
 open, carried over unchanged from Sessions 34–36: further indicators
 (MACD, Bollinger), and the two documentation gaps noted above (slice 3 and
 composer Session 2 each still lack their own PROGRESS.md entry).
+
+## Session 38 (P9.1) — FRED risk-free rate: replacing the ^IRX proxy — 2026-07-15
+
+Phase 6.3's options calculator has used yfinance's `^IRX` (13-week T-bill
+discount yield) as the risk-free rate `r` since Session 29. `^IRX` is a
+quote-only proxy with no first-party publication record; FRED (Federal
+Reserve Economic Data) publishes the actual series a proxy like `^IRX` is
+approximating, with a citable observation date. This session cuts the
+options calculator over to FRED as the primary source, keeping `^IRX` as a
+resilience-chain fallback rather than a hard dependency.
+
+### Series choice, verified live before writing any code
+
+FRED publishes two 3-month T-bill series that look interchangeable but
+aren't: `DTB3` (discount-basis secondary market rate) and `DGS3MO`
+(investment/coupon-equivalent basis). Checked both against `^IRX` live —
+`DTB3` tracks `^IRX` within ~1bp (both discount-basis quoting conventions),
+while `DGS3MO` runs ~15bp higher, consistent with the known discount-vs-
+coupon-equivalent gap for short maturities. `DTB3` is the correct
+like-for-like replacement; `DGS3MO` would have silently shifted every
+options Greek by a rate convention mismatch, not a real market difference.
+
+### What got built
+
+- `engine/app/adapters/fred.py` — `FredRiskFreeRateProvider`, one method
+  (`get_risk_free_rate() -> tuple[rate, observation_date]`). Queries
+  `DTB3` with `sort_order=desc` and a small (`limit=10`) lookback window,
+  skips FRED's literal `"."` missing-observation marker (not null/omitted),
+  returns the first valid observation converted from percent to decimal.
+  Raises `RuntimeError` if `FRED_API_KEY` is unset or the whole lookback
+  window is missing data — no silent zero-rate fallback baked into the
+  adapter itself; that's the service layer's job.
+- `engine/app/services/options.py`'s `_get_risk_free_rate()` now tries FRED
+  first, falls back to the existing yfinance `^IRX` path on *any* FRED
+  failure (missing key, network error, empty window) — same
+  resilience-chain idiom as `provider_registry.py`, not a new pattern.
+  Cache entry gained `source` and `observation_date` fields alongside the
+  existing `rate`/`fetched_at`; a legacy cache row missing these still
+  degrades to `source="yfinance"` rather than crashing.
+- **Freshness disclosure, not a fabricated "as of now":** when FRED serves
+  the rate, `r_as_of` is FRED's own observation date (honestly lagged —
+  DTB3 republishes once/day with a ~1-business-day H.15 delay plus
+  weekends), not the fetch timestamp. The yfinance fallback still uses the
+  fetch-time stamp, since `^IRX` carries no finer-grained as-of of its own.
+  A new `r_source` field on `GreeksInputs` (`schema/options.py`) discloses
+  which provider actually produced the number, so `r_as_of`'s meaning is
+  unambiguous either way.
+- `engine/app/config.py` gained `FRED_API_KEY` (blank disables, same
+  pattern as `FINNHUB_API_KEY`); added to `.env.example` with the
+  fred.stlouisfed.org key-signup link, which the backend implementation had
+  initially missed.
+- `web/lib/api.ts`'s `GreeksInputs` type and `web/app/options/page.tsx`'s
+  freshness line updated to carry and display `r_source` — the backend
+  field existed before the frontend consumed it; closed that gap this
+  session rather than leaving it a backend-only disclosure.
+
+### Verified
+
+`engine/tests/test_fred_adapter.py` (adapter in isolation, canned
+`httpx.AsyncClient` responses, no live network): percent-to-decimal
+conversion, `"."` missing-observation skipping, no-valid-observation and
+no-API-key `RuntimeError`s. `test_options_service.py` gained FRED-preferred,
+FRED-unavailable-falls-back-to-yfinance, and cached-FRED-source-survives-a-
+cache-hit cases. `test_black_scholes.py` gained a check that the Greeks
+shift between `^IRX` (3.723%, 2026-07-08 live comparison) and `DTB3`
+(3.73%) matches what `rho` predicts for that rate gap to within 1e-6 — proof
+the cutover moves prices by a real, explicable amount, not an unexplained
+one. 98/98 tests pass repo-wide. `tsc --noEmit` and `eslint` clean on both
+touched frontend files (the 2 pre-existing `react-hooks/set-state-in-effect`
+findings on the ticker typeahead debounce are the same accepted pattern
+noted for `compare/` (Session 27) and `backtest/` (Session 36), not
+something this session introduced). Live Playwright pass through `/options`
+end-to-end (ticker search → expiration → strike → calculate) confirmed the
+freshness line renders `rate as of <date> (yfinance)` — `FRED_API_KEY` is
+unset in this local environment, so the fallback path is what's actually
+exercised live; the FRED-primary path is covered by the mocked service-layer
+tests above, not a live FRED account.
+
+### Next
+
+Nothing outstanding for this slice — FRED cutover is complete, tested, and
+disclosed end-to-end. Getting a real `FRED_API_KEY` into the live
+environment (currently blank, so production also runs the yfinance
+fallback today) is a user action, not engine work.
