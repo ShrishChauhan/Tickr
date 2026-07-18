@@ -7,6 +7,8 @@ from typing import Optional
 
 import httpx
 
+from .base import LoaderLicense
+
 _BASE_URL = "https://api.exchange.coinbase.com"
 _HEADERS = {"User-Agent": "tickr-app"}
 
@@ -27,6 +29,7 @@ class CoinbaseQuoteProvider:
     falls through to yfinance."""
 
     name = "coinbase"
+    license = LoaderLicense.UNCLEAR  # ToS review pending — see adapters/base.py LoaderLicense
 
     async def get_quote(self, ticker: str) -> Optional[dict]:
         product_id = ticker.upper()

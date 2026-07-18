@@ -1,9 +1,14 @@
-# Provider registry — (asset_type) -> ordered QuoteProvider list, first success wins.
-# Only price/quote data flows through here; fundamentals/company identity still go
-# through DataAdapter directly (adapters/base.py). yfinance is the universal
-# fallback today; B4 (Finnhub) prepends a class-specific provider with no
-# changes to get_quote()'s call sites. B6 (FX) evaluated free sources and
-# found none beat yfinance's own forex data — no provider added.
+# Provider registry — (data_type, asset_class) -> ordered Loader list, first success wins.
+# Fundamentals/company identity still go through DataAdapter directly
+# (adapters/base.py) — that's an explicit user choice via ?source=, not a
+# resilience fallback. yfinance is the universal quote fallback today; B4
+# (Finnhub) prepends a class-specific provider with no changes to get_quote()'s
+# call sites. B6 (FX) evaluated free sources and found none beat yfinance's
+# own forex data — no provider added.
+#
+# Key is (data_type, asset_class), not asset_class alone — this is the ARCHITECTURE.md
+# §4/§6/§9-specified shape. Only "quote" is populated this chunk; future data
+# types (risk-free rate, OHLC, ...) reuse the same tuple-keyed shape.
 from typing import Optional
 
 from ..adapters.yfinance import YFinanceQuoteProvider
@@ -15,11 +20,11 @@ _coinbase_quote_provider = CoinbaseQuoteProvider()
 _finnhub_quote_provider = FinnhubQuoteProvider()
 
 _REGISTRY = {
-    "crypto":    [_coinbase_quote_provider, _yfinance_quote_provider],  # B3
-    "forex":     [_yfinance_quote_provider],   # B6 evaluated Frankfurter/exchangerate-api: both daily-only, worse than yfinance's minute-level forex data — no provider added, see PROGRESS.md
-    "commodity": [_yfinance_quote_provider],
-    "index":     [_yfinance_quote_provider],
-    "equity":    [_finnhub_quote_provider, _yfinance_quote_provider],  # B4
+    ("quote", "crypto"):    [_coinbase_quote_provider, _yfinance_quote_provider],  # B3
+    ("quote", "forex"):     [_yfinance_quote_provider],   # B6 evaluated Frankfurter/exchangerate-api: both daily-only, worse than yfinance's minute-level forex data — no provider added, see PROGRESS.md
+    ("quote", "commodity"): [_yfinance_quote_provider],
+    ("quote", "index"):     [_yfinance_quote_provider],
+    ("quote", "equity"):    [_finnhub_quote_provider, _yfinance_quote_provider],  # B4
 }
 
 
@@ -42,7 +47,7 @@ def infer_asset_type_from_ticker(ticker: str) -> str:
 
 async def get_quote(ticker: str) -> Optional[dict]:
     asset_type = infer_asset_type_from_ticker(ticker)
-    for provider in _REGISTRY.get(asset_type, [_yfinance_quote_provider]):
+    for provider in _REGISTRY.get(("quote", asset_type), [_yfinance_quote_provider]):
         try:
             result = await provider.get_quote(ticker)
         except Exception:

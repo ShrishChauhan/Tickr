@@ -8,6 +8,7 @@ from typing import Optional
 import httpx
 
 from ..config import settings
+from .base import LoaderLicense
 
 _BASE_URL = "https://finnhub.io/api/v1"
 
@@ -29,6 +30,7 @@ class FinnhubQuoteProvider:
     registry falls through to yfinance."""
 
     name = "finnhub"
+    license = LoaderLicense.UNCLEAR  # ToS review pending — see adapters/base.py LoaderLicense
 
     async def get_quote(self, ticker: str) -> Optional[dict]:
         if not settings.FINNHUB_API_KEY:

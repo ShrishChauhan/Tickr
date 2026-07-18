@@ -6,7 +6,7 @@ from typing import List, Optional
 import pandas as pd
 import yfinance as yf
 
-from .base import DataAdapter
+from .base import DataAdapter, LoaderLicense
 from ..schema import CompanyIdentity, Market, Exchange, Currency
 from ..schema import NormalizedFundamentals, Period, IncomeStatement, BalanceSheet, CashFlowStatement, Ratios
 from ..schema import FilingReference, FilingType
@@ -494,6 +494,7 @@ class YFinanceQuoteProvider:
     provider registry (engine/app/services/provider_registry.py)."""
 
     name = "yfinance"
+    license = LoaderLicense.PERSONAL_ONLY  # yfinance ToS — see adapters/base.py LoaderLicense
 
     async def get_quote(self, ticker: str) -> Optional[dict]:
         loop = asyncio.get_event_loop()
