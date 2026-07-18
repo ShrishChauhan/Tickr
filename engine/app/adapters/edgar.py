@@ -8,7 +8,7 @@ import pandas as pd
 import edgar
 from edgar import CompanyNotFoundError
 
-from .base import DataAdapter
+from .base import DataAdapter, LoaderLicense
 from ..config import settings
 from ..schema import CompanyIdentity, Market, Exchange, Currency
 from ..schema import NormalizedFundamentals, Period, IncomeStatement, BalanceSheet, CashFlowStatement, Ratios
@@ -195,6 +195,10 @@ class EdgarAdapter(DataAdapter):
     @property
     def source_name(self) -> str:
         return "edgar"
+
+    @property
+    def license(self) -> LoaderLicense:
+        return LoaderLicense.COMMERCIAL_OK  # public-domain SEC data
 
     async def get_company(self, ticker: str, market: str = "US") -> CompanyIdentity:
         loop = asyncio.get_event_loop()

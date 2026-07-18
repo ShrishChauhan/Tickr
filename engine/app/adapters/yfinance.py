@@ -175,6 +175,10 @@ class YFinanceAdapter(DataAdapter):
     def source_name(self) -> str:
         return "yfinance"
 
+    @property
+    def license(self) -> LoaderLicense:
+        return LoaderLicense.PERSONAL_ONLY  # yfinance ToS
+
     async def get_company(self, ticker: str, market: str = "US") -> CompanyIdentity:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._sync_get_company, ticker)

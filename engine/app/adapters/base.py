@@ -45,6 +45,12 @@ class DataAdapter(ABC):
         """Short identifier for this source, e.g. 'edgar', 'yfinance'."""
         ...
 
+    @property
+    @abstractmethod
+    def license(self) -> LoaderLicense:
+        """LoaderLicense classification for this source — see LoaderLicense above."""
+        ...
+
     @abstractmethod
     async def get_company(self, ticker: str, market: str = "US") -> CompanyIdentity:
         """Resolve a ticker symbol to a fully-populated CompanyIdentity."""
