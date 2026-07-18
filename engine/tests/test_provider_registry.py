@@ -4,7 +4,12 @@ import pytest
 
 from app.adapters.base import LoaderLicense
 from app.services import provider_registry
-from app.services.provider_registry import _fred_risk_free_provider, _yfinance_options_provider
+from app.services.provider_registry import (
+    _fred_risk_free_provider,
+    _yfinance_options_provider,
+    _yfinance_quote_provider,
+    _parquet_ohlc_loader,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -183,3 +188,88 @@ async def test_risk_free_rate_total_failure_reraises_not_none(monkeypatch):
 
     with pytest.raises(RuntimeError, match="yfinance down"):
         await provider_registry.get_risk_free_rate()
+
+
+# ---------------------------------------------------------------------------
+# Equity OHLC chain (Chunk 3) — [yfinance, parquet]. Unlike get_risk_free_rate(),
+# total failure must preserve the pre-refactor contract: ([], None, None), not
+# a raise. All mocked — no dependency on data_historical/ existing in CI.
+# ---------------------------------------------------------------------------
+
+def test_ohlc_chain_is_yfinance_then_parquet():
+    providers = provider_registry._REGISTRY[("ohlc", "equity")]
+    assert [p.name for p in providers] == ["yfinance", "parquet"]
+
+
+@pytest.mark.asyncio
+async def test_ohlc_yfinance_success_short_circuits_parquet(monkeypatch):
+    async def yfinance_ok(ticker):
+        return [{"date": "2026-07-17", "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 100}], "2026-07-17T12:00:00+00:00"
+
+    parquet_calls = {"n": 0}
+    async def parquet_should_not_run(ticker):
+        parquet_calls["n"] += 1
+        return [], None
+
+    monkeypatch.setattr(_yfinance_quote_provider, "get_ohlc", yfinance_ok)
+    monkeypatch.setattr(_parquet_ohlc_loader, "get_ohlc", parquet_should_not_run)
+
+    bars, as_of, source = await provider_registry.get_equity_ohlc("AAPL")
+
+    assert source == "yfinance"
+    assert as_of == "2026-07-17T12:00:00+00:00"
+    assert len(bars) == 1
+    assert parquet_calls["n"] == 0
+
+
+@pytest.mark.asyncio
+async def test_ohlc_falls_through_to_parquet_on_yfinance_failure(monkeypatch):
+    async def yfinance_fails(ticker):
+        raise RuntimeError("yfinance down")
+    async def parquet_ok(ticker):
+        return [{"date": "2026-07-10", "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 100}], "2026-07-10"
+
+    monkeypatch.setattr(_yfinance_quote_provider, "get_ohlc", yfinance_fails)
+    monkeypatch.setattr(_parquet_ohlc_loader, "get_ohlc", parquet_ok)
+
+    bars, as_of, source = await provider_registry.get_equity_ohlc("AAPL")
+
+    assert source == "parquet"
+    assert as_of == "2026-07-10"
+    assert len(bars) == 1
+
+
+@pytest.mark.asyncio
+async def test_ohlc_empty_result_treated_as_decline(monkeypatch):
+    """An empty-but-not-raised bar list (e.g. yfinance has no history for a
+    brand-new listing) must also fall through, mirroring get_quote()'s
+    None-means-decline semantics — not just exceptions."""
+    async def yfinance_empty(ticker):
+        return [], "2026-07-17T12:00:00+00:00"
+    async def parquet_ok(ticker):
+        return [{"date": "2026-07-10", "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 100}], "2026-07-10"
+
+    monkeypatch.setattr(_yfinance_quote_provider, "get_ohlc", yfinance_empty)
+    monkeypatch.setattr(_parquet_ohlc_loader, "get_ohlc", parquet_ok)
+
+    bars, as_of, source = await provider_registry.get_equity_ohlc("AAPL")
+
+    assert source == "parquet"
+    assert len(bars) == 1
+
+
+@pytest.mark.asyncio
+async def test_ohlc_total_failure_returns_empty_list_not_none(monkeypatch):
+    async def yfinance_fails(ticker):
+        raise RuntimeError("yfinance down")
+    async def parquet_fails(ticker):
+        raise RuntimeError("no local parquet file")
+
+    monkeypatch.setattr(_yfinance_quote_provider, "get_ohlc", yfinance_fails)
+    monkeypatch.setattr(_parquet_ohlc_loader, "get_ohlc", parquet_fails)
+
+    bars, as_of, source = await provider_registry.get_equity_ohlc("AAPL")
+
+    assert bars == []
+    assert as_of is None
+    assert source is None

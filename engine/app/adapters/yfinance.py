@@ -500,12 +500,15 @@ class YFinanceQuoteProvider:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._sync_get_quote, ticker)
 
-    async def get_ohlc(self, ticker: str) -> list[dict]:
+    async def get_ohlc(self, ticker: str) -> tuple[list[dict], Optional[str]]:
         """Historical bars only (no `.info` quote fields) — used by the equity
         cache-TTL split (services/price.py) so bars can be fetched and cached
-        independently of Finnhub's short-TTL live quote."""
+        independently of Finnhub's short-TTL live quote. Returns (bars, as_of);
+        as_of is a fetch-time timestamp — yfinance's live OHLC has no finer-
+        grained notion of its own currency (same convention as ^IRX)."""
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _sync_get_ohlc_bars, ticker)
+        bars = await loop.run_in_executor(None, _sync_get_ohlc_bars, ticker)
+        return bars, datetime.now(timezone.utc).isoformat()
 
     def _sync_get_quote(self, ticker: str) -> dict:
         t = yf.Ticker(ticker)

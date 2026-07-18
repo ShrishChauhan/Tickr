@@ -30,6 +30,10 @@ class PriceOnlyData(BaseModel):
     ohlc: list[OHLCBar] = []
     fetched_at: str
     source: str = "yfinance"
+    # Additive (Phase 9.2 / Chunk 3) — default None so cached rows written
+    # before these fields existed still deserialize without error.
+    ohlc_source: Optional[str] = None
+    ohlc_as_of: Optional[str] = None
 
     @computed_field
     @property

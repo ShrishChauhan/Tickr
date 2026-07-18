@@ -17,12 +17,14 @@ from ..adapters.yfinance import YFinanceQuoteProvider, YFinanceOptionsProvider
 from ..adapters.coinbase import CoinbaseQuoteProvider
 from ..adapters.finnhub import FinnhubQuoteProvider
 from ..adapters.fred import FredRiskFreeRateProvider
+from ..adapters.parquet_history import ParquetOHLCLoader
 
 _yfinance_quote_provider = YFinanceQuoteProvider()
 _coinbase_quote_provider = CoinbaseQuoteProvider()
 _finnhub_quote_provider = FinnhubQuoteProvider()
 _yfinance_options_provider = YFinanceOptionsProvider()
 _fred_risk_free_provider = FredRiskFreeRateProvider()
+_parquet_ohlc_loader = ParquetOHLCLoader()
 
 _REGISTRY = {
     ("quote", "crypto"):    [_coinbase_quote_provider, _yfinance_quote_provider],  # B3
@@ -31,6 +33,7 @@ _REGISTRY = {
     ("quote", "index"):     [_yfinance_quote_provider],
     ("quote", "equity"):    [_finnhub_quote_provider, _yfinance_quote_provider],  # B4
     ("risk_free_rate", "global"): [_fred_risk_free_provider, _yfinance_options_provider],  # Phase 9.1
+    ("ohlc", "equity"):     [_yfinance_quote_provider, _parquet_ohlc_loader],  # Phase 9.2 (Chunk 3)
 }
 
 
@@ -81,11 +84,21 @@ async def get_risk_free_rate() -> tuple[float, Optional[str], str]:
     raise last_exc
 
 
-async def get_equity_ohlc(ticker: str) -> list[dict]:
-    """Historical OHLC bars for equities. Finnhub (the equity quote provider)
-    never returns bars (see adapters/finnhub.py) — always goes to yfinance,
-    regardless of which provider actually served the live quote."""
-    try:
-        return await _yfinance_quote_provider.get_ohlc(ticker)
-    except Exception:
-        return []
+async def get_equity_ohlc(ticker: str) -> tuple[list[dict], Optional[str], Optional[str]]:
+    """(bars, as_of, source). Historical OHLC bars for equities. Finnhub (the
+    equity quote provider) never returns bars (see adapters/finnhub.py) — this
+    chain is independent of which provider served the live quote.
+
+    An empty bar list is treated the same as a raise (this provider declined/
+    had nothing) and falls through to the next link — matching get_quote()'s
+    None-means-decline semantics. Total failure preserves the pre-refactor
+    contract exactly: ([], None, None), not None — callers that do
+    `if not result.ohlc` must keep working unchanged."""
+    for provider in _REGISTRY[("ohlc", "equity")]:
+        try:
+            bars, as_of = await provider.get_ohlc(ticker)
+        except Exception:
+            continue
+        if bars:
+            return bars, as_of, provider.name
+    return [], None, None

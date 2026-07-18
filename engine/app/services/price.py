@@ -1,5 +1,7 @@
 # Cache-orchestration for price/quote data — extracted from routes.py, mirrors
 # services/company.py and services/fundamentals.py (A2).
+from typing import Optional
+
 from ..cache.base import CacheBackend
 from ..cache.ttl_config import PRICE_DATA_TTL_SECONDS, PRICE_TTL_SECONDS
 from ..schema import OHLCBar, PriceOnlyData
@@ -68,21 +70,38 @@ async def _get_equity_price(cache: CacheBackend, ticker: str) -> PriceOnlyData:
     if not result.ohlc:
         # Only Finnhub-served quotes reach here empty — a yfinance-fallback quote
         # (e.g. no FINNHUB_API_KEY) already carries real bars from the same fetch.
-        result.ohlc = await _get_equity_ohlc(cache, ticker)
+        result.ohlc, result.ohlc_source, result.ohlc_as_of = await _get_equity_ohlc(cache, ticker)
+    elif result.ohlc_source is None:
+        # Bundled yfinance-fallback quote: bars came from the same fetch as
+        # the quote itself, never through the OHLC chain — reuse its provenance
+        # rather than re-fetching. Also backfills legacy cached rows (written
+        # before ohlc_source existed) so they don't stay permanently unset.
+        result.ohlc_source = result.source
+        result.ohlc_as_of = result.fetched_at
     return result
 
 
-async def _get_equity_ohlc(cache: CacheBackend, ticker: str) -> list[OHLCBar]:
+async def _get_equity_ohlc(cache: CacheBackend, ticker: str) -> tuple[list[OHLCBar], Optional[str], Optional[str]]:
     cache_key = f"ohlc:{ticker}"
 
     raw = await cache.get(cache_key)
     if raw is None:
         try:
-            bars = await provider_registry.get_equity_ohlc(ticker)
+            bars, as_of, source = await provider_registry.get_equity_ohlc(ticker)
         except Exception:
-            bars = []
-        raw = [OHLCBar(**bar).model_dump(mode="json") for bar in bars]
+            bars, as_of, source = [], None, None
+        raw = {
+            "bars": [OHLCBar(**bar).model_dump(mode="json") for bar in bars],
+            "source": source,
+            "as_of": as_of,
+        }
         await cache.set(cache_key, raw, PRICE_DATA_TTL_SECONDS,
-                         data_type="ohlc", ticker=ticker, source="yfinance")
+                         data_type="ohlc", ticker=ticker, source=source or "")
 
-    return [OHLCBar.model_validate(bar) for bar in raw]
+    if isinstance(raw, list):
+        # Pre-Chunk-3 cache shape (bare bar list, always yfinance, no as_of) —
+        # still valid during this TTL's rollout window.
+        return [OHLCBar.model_validate(bar) for bar in raw], "yfinance", None
+
+    bar_dicts = raw.get("bars", [])
+    return [OHLCBar.model_validate(bar) for bar in bar_dicts], raw.get("source"), raw.get("as_of")
