@@ -1871,3 +1871,111 @@ Nothing outstanding for this slice — FRED cutover is complete, tested, and
 disclosed end-to-end. Getting a real `FRED_API_KEY` into the live
 environment (currently blank, so production also runs the yfinance
 fallback today) is a user action, not engine work.
+
+## Session 39 (P9.2) — Loader-registry refactor: provider_registry.py generalized to (data_type, asset_class) — 2026-07-18
+
+### Context
+
+Tickr's data-source fetching grew organically: quotes got a real fallback
+chain (`services/provider_registry.py`, Phase B), but every phase since
+(options in 6.3, FRED in 9.1) reused the *idea* of a resilience chain without
+plugging into that *mechanism* — each wrote its own bespoke try/except. The
+risk-free-rate fallback in particular called itself "the resilience-chain
+idiom used elsewhere" in its own docstring while not actually being wired
+into `provider_registry.py`. Equity OHLC had no chain at all — hardcoded
+straight to yfinance. ARCHITECTURE.md §4/§6/§9 already specified the target
+shape (`(data_type, asset_class) -> ordered provider list`, marked done as
+"Phase B2") but the doc predates options/FRED and the code only partially
+realized it (asset-class-keyed, one data_type: quote). This refactor
+completes that already-declared design rather than inventing a competing
+one — generalizing the one mechanism that already worked.
+
+### Chunk 1 — `Loader` protocol + `LoaderLicense`, registry key generalized (`a14d4b2`)
+
+- `Loader(Protocol)` minimal shape (`name`, `license`) added to
+  `adapters/base.py`; `LoaderLicense` enum (`COMMERCIAL_OK`/`PERSONAL_ONLY`/
+  `UNCLEAR`) — metadata only this phase, no enforcement yet.
+- `provider_registry.py`'s `_REGISTRY` key generalized from a bare
+  asset-class string to a `(data_type, asset_class)` tuple. Quote chains
+  unchanged in behavior — same providers, same order, same output.
+- New `tests/test_provider_registry.py` (didn't exist before this chunk —
+  closed a real gap): decline/raise/first-success-wins/total-failure
+  semantics proven against fake providers.
+- Verified: full existing suite unchanged; `GET /price/AAPL` and
+  `GET /price/BTC-USD` byte-identical before/after except timestamps.
+
+### Chunk 2 — risk-free rate migrated in (the named seed pattern) (`03225f2`)
+
+- New `RateProvider` protocol; FRED and yfinance `^IRX` now walk
+  `_REGISTRY[("risk_free_rate", "global")]` instead of `services/options.py`
+  running its own inline try/except.
+- The one genuinely important asymmetry in the whole arc: **re-raise-on-
+  total-failure explicitly preserved**, not homogenized into the quote
+  chain's swallow-to-`None` style. A total rate-provider outage must fail
+  loudly — a silent fallback here would price options at a fabricated or
+  zero rate instead of failing the request.
+- Fixed an environment-dependent test fragility found while migrating:
+  tests were silently depending on the real `.env`'s `FRED_API_KEY` being
+  blank rather than mocking its absence explicitly; `patched_provider` now
+  mocks FRED's unavailability directly instead of relying on local env state.
+- Verified: `test_options_service.py`'s existing risk-free-rate assertions
+  pass unchanged (only monkeypatch *targets* shifted, per plan); live-verified
+  both the FRED-success and FRED-total-failure (500) paths against the real
+  running app.
+
+### Chunk 3 — equity OHLC + Parquet fallback tail (`287c477`)
+
+- New, additive `historical_data.load_ohlc_bars()`; the existing
+  `load_price_history()` (the backtester's dependency) is completely
+  untouched.
+- New `ParquetOHLCLoader` — `license = PERSONAL_ONLY` (it's a cached copy of
+  yfinance data, inheriting yfinance's restriction rather than being
+  independently commercial-safe).
+- Adjustment-convention resolution (found and resolved this chunk, not
+  silently shipped): Parquet's `"Adj Close"` column selected for the tail's
+  `close` value to match live yfinance's dividend-adjusted default
+  (`auto_adjust=True`), avoiding a fake discontinuity at the failover
+  boundary that would otherwise look like a market move. Open/High/Low left
+  unadjusted as a disclosed, smaller seam.
+- Total-failure contract preserved exactly as `([], None, None)` — not a
+  raise. This is a **different** asymmetry from Chunk 2's re-raise, and both
+  are deliberate: an absent OHLC chart degrades gracefully to empty, while an
+  absent risk-free rate must not silently mis-price an option.
+- Verified: live-verified both the yfinance-healthy and simulated-Parquet-
+  fallback paths against the real running app (cache cleared before each
+  check); `test_backtest_service.py`/`test_backtest_schema.py` re-run
+  completely unchanged, confirming the backtester boundary held.
+
+### The commit-history recovery (a process lesson worth keeping, not glossing over)
+
+The three chunks were coded into one continuous working tree across sessions
+before any commit happened. A naive per-chunk `git add <file>` swept each
+shared file's *entire final state* into the first commit that touched it —
+the initial Chunk 1 commit was non-importable in isolation (it contained an
+import for a file that didn't exist until Chunk 3). This was caught via
+`git show` before pushing, not after. Fixed by reconstructing genuine
+incremental diffs for the shared files (`base.py`, `provider_registry.py`,
+`yfinance.py`, `test_provider_registry.py`) and verifying each final commit
+was independently importable via an isolated git worktree before pushing.
+Lesson for future multi-chunk arcs: when multiple chunks land in one working
+tree before any commit happens, per-chunk `git add` does not guarantee
+per-chunk commit *content* — verify by isolated checkout, not by file-list
+matching.
+
+### Verified (arc-wide)
+
+All three commits (`a14d4b2`, `03225f2`, `287c477`) confirmed independently
+importable via isolated worktrees. 119/119 tests pass at HEAD. Live
+end-to-end checks for both the FRED-success and FRED-total-failure paths
+(Chunk 2), and both the yfinance-healthy and Parquet-fallback paths
+(Chunk 3), all confirmed against the real running app with actual observed
+values, not inferred from status codes alone.
+
+### Next
+
+Chunk 4 (`DataAdapter` license tags — Edgar/yfinance-as-adapter, no dispatch
+change), optional Chunk 5 (ARCHITECTURE.md doc update, no code). Separately:
+this architecture is what future data-source expansion (new exchanges,
+insider-trade feeds, news/sentiment) will plug into — a small, uniform,
+independently-verifiable registry entry instead of a bespoke integration
+each time.
