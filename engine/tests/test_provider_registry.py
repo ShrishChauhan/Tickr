@@ -1,9 +1,10 @@
-# Provider registry tests — Chunk 1 of the Loader-registry refactor
+# Provider registry tests — Chunks 1-2 of the Loader-registry refactor
 # (see PROGRESS.md). Fake providers only; no live network calls.
 import pytest
 
 from app.adapters.base import LoaderLicense
 from app.services import provider_registry
+from app.services.provider_registry import _fred_risk_free_provider, _yfinance_options_provider
 
 
 # ---------------------------------------------------------------------------
@@ -13,8 +14,11 @@ from app.services import provider_registry
 
 def test_registry_keys_are_data_type_asset_class_tuples():
     assert all(isinstance(k, tuple) and len(k) == 2 for k in provider_registry._REGISTRY)
+    # "quote" is keyed per asset class; "risk_free_rate" (Chunk 2) uses the
+    # "global" sentinel since the rate itself is asset-class-agnostic.
     quote_keys = [k for k in provider_registry._REGISTRY if k[0] == "quote"]
     assert {k[1] for k in quote_keys} == {"crypto", "forex", "commodity", "index", "equity"}
+    assert ("risk_free_rate", "global") in provider_registry._REGISTRY
 
 
 def test_quote_chain_matches_pre_refactor_asset_classes():
@@ -130,3 +134,52 @@ async def test_total_failure_returns_none(patched_equity_chain):
     result = await provider_registry.get_quote("AAPL")
 
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Risk-free-rate chain (Chunk 2) — asymmetric failure contract: unlike
+# get_quote(), a total failure must re-raise, not swallow to None. A silent
+# None here would let options.py price Greeks at a fabricated/zero rate.
+# ---------------------------------------------------------------------------
+
+def test_risk_free_rate_chain_is_fred_then_yfinance():
+    providers = provider_registry._REGISTRY[("risk_free_rate", "global")]
+    assert [p.name for p in providers] == ["fred", "yfinance"]
+
+
+@pytest.mark.asyncio
+async def test_risk_free_rate_first_success_wins(monkeypatch):
+    async def fred_succeeds():
+        return 0.0371, "2026-07-10"
+    monkeypatch.setattr(_fred_risk_free_provider, "get_risk_free_rate", fred_succeeds)
+
+    rate, as_of, source = await provider_registry.get_risk_free_rate()
+
+    assert (rate, as_of, source) == (0.0371, "2026-07-10", "fred")
+
+
+@pytest.mark.asyncio
+async def test_risk_free_rate_falls_through_on_raise(monkeypatch):
+    async def fred_fails():
+        raise RuntimeError("FRED_API_KEY is not configured")
+    async def yfinance_succeeds():
+        return 0.037, None
+    monkeypatch.setattr(_fred_risk_free_provider, "get_risk_free_rate", fred_fails)
+    monkeypatch.setattr(_yfinance_options_provider, "get_risk_free_rate", yfinance_succeeds)
+
+    rate, as_of, source = await provider_registry.get_risk_free_rate()
+
+    assert (rate, as_of, source) == (0.037, None, "yfinance")
+
+
+@pytest.mark.asyncio
+async def test_risk_free_rate_total_failure_reraises_not_none(monkeypatch):
+    async def fred_fails():
+        raise RuntimeError("fred down")
+    async def yfinance_fails():
+        raise RuntimeError("yfinance down")
+    monkeypatch.setattr(_fred_risk_free_provider, "get_risk_free_rate", fred_fails)
+    monkeypatch.setattr(_yfinance_options_provider, "get_risk_free_rate", yfinance_fails)
+
+    with pytest.raises(RuntimeError, match="yfinance down"):
+        await provider_registry.get_risk_free_rate()

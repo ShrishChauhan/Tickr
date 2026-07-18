@@ -607,11 +607,12 @@ def _sync_get_chain(ticker: str, expiration: str) -> dict:
     }
 
 
-def _sync_get_risk_free_rate() -> float:
+def _sync_get_risk_free_rate() -> tuple[float, None]:
     # ^IRX regularMarketPrice is percent-shaped (3.70 meaning 3.70%) — confirmed
     # live, see PROGRESS.md Session 28 — divide by 100 before returning.
     pct = _safe(yf.Ticker("^IRX").info.get("regularMarketPrice"))
-    return (pct / 100.0) if pct is not None else 0.0
+    rate = (pct / 100.0) if pct is not None else 0.0
+    return rate, None  # ^IRX carries no finer-grained as-of of its own
 
 
 def _sync_get_dividend_rate(ticker: str) -> Optional[float]:
@@ -625,6 +626,7 @@ class YFinanceOptionsProvider:
     markets + commodities/crypto, see PROGRESS.md Session 28)."""
 
     name = "yfinance"
+    license = LoaderLicense.PERSONAL_ONLY  # yfinance ToS — see adapters/base.py LoaderLicense
 
     async def get_expirations(self, ticker: str) -> list[str]:
         loop = asyncio.get_event_loop()
@@ -634,7 +636,7 @@ class YFinanceOptionsProvider:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _sync_get_chain, ticker, expiration)
 
-    async def get_risk_free_rate(self) -> float:
+    async def get_risk_free_rate(self) -> tuple[float, None]:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _sync_get_risk_free_rate)
 

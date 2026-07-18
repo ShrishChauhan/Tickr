@@ -9,6 +9,7 @@ from typing import Optional
 import httpx
 
 from ..config import settings
+from .base import LoaderLicense
 
 _BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 _SERIES_ID = "DTB3"
@@ -29,6 +30,7 @@ class FredRiskFreeRateProvider:
     the observation's own date, not papered over with a fetch-time stamp."""
 
     name = "fred"
+    license = LoaderLicense.COMMERCIAL_OK  # public U.S. government economic data — see adapters/base.py LoaderLicense
 
     async def get_risk_free_rate(self) -> tuple[float, str]:
         if not settings.FRED_API_KEY:

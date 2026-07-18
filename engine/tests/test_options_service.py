@@ -36,7 +36,11 @@ def cache():
 
 @pytest.fixture
 def patched_provider(monkeypatch):
-    """Stub out YFinanceOptionsProvider network calls with fixed values."""
+    """Stub out YFinanceOptionsProvider network calls with fixed values, and
+    FRED's provider as declining by default — tests must be isolated from
+    whatever FRED_API_KEY happens to be set to in the local .env, not rely on
+    it being blank. Tests that specifically exercise the FRED-succeeds path
+    (test_calculate_prefers_fred_when_available) override this explicitly."""
     async def fake_get_chain(ticker, expiration):
         return {
             "calls": [{"strike": 150.0, "bid": 5.0, "ask": 5.2, "last_price": 5.1,
@@ -49,14 +53,18 @@ def patched_provider(monkeypatch):
         }
 
     async def fake_get_risk_free_rate():
-        return 0.037
+        return 0.037, None
 
     async def fake_get_dividend_rate(ticker):
         return 1.08
 
+    async def fake_fred_declines():
+        raise RuntimeError("FRED_API_KEY is not configured")
+
     monkeypatch.setattr(options_service._provider, "get_chain", fake_get_chain)
     monkeypatch.setattr(options_service._provider, "get_risk_free_rate", fake_get_risk_free_rate)
     monkeypatch.setattr(options_service._provider, "get_dividend_rate", fake_get_dividend_rate)
+    monkeypatch.setattr(options_service._fred_provider, "get_risk_free_rate", fake_fred_declines)
 
     async def fake_get_price(cache, ticker):
         return PriceOnlyData(
@@ -117,8 +125,8 @@ async def test_calculate_call_unit_conversion(cache, patched_provider):
     assert result.inputs_used.iv_as_of
     assert result.inputs_used.r_as_of
     assert result.inputs_used.contract_last_trade_at == "2026-07-11T20:00:00+00:00"
-    # FRED_API_KEY is unset in the test environment, so FRED declines
-    # immediately and this falls back to the patched yfinance provider.
+    # patched_provider mocks FRED as declining (independent of the local
+    # .env's actual FRED_API_KEY) so this falls back to the patched yfinance provider.
     assert result.inputs_used.r_source == "yfinance"
 
 

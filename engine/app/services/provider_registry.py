@@ -7,17 +7,22 @@
 # own forex data — no provider added.
 #
 # Key is (data_type, asset_class), not asset_class alone — this is the ARCHITECTURE.md
-# §4/§6/§9-specified shape. Only "quote" is populated this chunk; future data
-# types (risk-free rate, OHLC, ...) reuse the same tuple-keyed shape.
+# §4/§6/§9-specified shape. "quote" chains are keyed by asset class; the
+# risk-free-rate chain uses the "global" sentinel since the rate itself is
+# asset-class-agnostic. Unlike get_quote(), get_risk_free_rate() re-raises on
+# total failure rather than swallowing to None/[] — see its docstring.
 from typing import Optional
 
-from ..adapters.yfinance import YFinanceQuoteProvider
+from ..adapters.yfinance import YFinanceQuoteProvider, YFinanceOptionsProvider
 from ..adapters.coinbase import CoinbaseQuoteProvider
 from ..adapters.finnhub import FinnhubQuoteProvider
+from ..adapters.fred import FredRiskFreeRateProvider
 
 _yfinance_quote_provider = YFinanceQuoteProvider()
 _coinbase_quote_provider = CoinbaseQuoteProvider()
 _finnhub_quote_provider = FinnhubQuoteProvider()
+_yfinance_options_provider = YFinanceOptionsProvider()
+_fred_risk_free_provider = FredRiskFreeRateProvider()
 
 _REGISTRY = {
     ("quote", "crypto"):    [_coinbase_quote_provider, _yfinance_quote_provider],  # B3
@@ -25,6 +30,7 @@ _REGISTRY = {
     ("quote", "commodity"): [_yfinance_quote_provider],
     ("quote", "index"):     [_yfinance_quote_provider],
     ("quote", "equity"):    [_finnhub_quote_provider, _yfinance_quote_provider],  # B4
+    ("risk_free_rate", "global"): [_fred_risk_free_provider, _yfinance_options_provider],  # Phase 9.1
 }
 
 
@@ -56,6 +62,23 @@ async def get_quote(ticker: str) -> Optional[dict]:
             result["source"] = provider.name
             return result
     return None
+
+
+async def get_risk_free_rate() -> tuple[float, Optional[str], str]:
+    """(rate, as_of, source). Unlike get_quote(), re-raises the last provider's
+    exception if every provider in the chain fails, rather than returning None —
+    a total risk-free-rate outage must fail loudly, not silently price options
+    at a fabricated/zero rate. Provenance (source, as_of) is stamped here, not
+    at the call site, per adapters/base.py's provenance convention."""
+    last_exc: Optional[Exception] = None
+    for provider in _REGISTRY[("risk_free_rate", "global")]:
+        try:
+            rate, as_of = await provider.get_risk_free_rate()
+        except Exception as e:
+            last_exc = e
+            continue
+        return rate, as_of, provider.name
+    raise last_exc
 
 
 async def get_equity_ohlc(ticker: str) -> list[dict]:
