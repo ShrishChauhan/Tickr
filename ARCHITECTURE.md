@@ -187,9 +187,32 @@ places — extend it into an explicit delay label. Target user is research-orien
 retail, so *delayed-but-honest* is acceptable everywhere real-time isn't free.
 
 **Provider registry (OpenBB pattern):** `(data_type, asset_class) → ordered
-provider list`; the engine tries providers in order and falls back on
-error/missing-credential, exactly like OpenBB's priority list. This is what makes
-"Aggressive" safe — every fragile source degrades to yfinance automatically.
+provider list` (`services/provider_registry.py`), generalized in Phase 9.2
+beyond its original single-data-type (quote) scope. Three data types are
+registered today:
+- `quote` — per-asset-class chains (crypto/forex/commodity/index/equity),
+  unchanged in behavior since B2/B3/B4. Degrades gracefully on total chain
+  failure (`None`) — a missing quote is a recoverable UX gap.
+- `risk_free_rate` — asset-class-agnostic, keyed `("risk_free_rate",
+  "global")` (FRED → yfinance `^IRX`, Phase 9.1). **Re-raises** on total
+  chain failure instead — a silently-wrong or fabricated rate would mis-price
+  options, a correctness failure rather than a UX gap. This asymmetry with
+  `quote`/`ohlc` is deliberate and should not be "cleaned up" into a single
+  uniform failure contract.
+- `ohlc` — equity only today (yfinance → Parquet-on-R2 fallback, Phase 9.2
+  Chunk 3). Degrades gracefully like `quote`: total failure returns
+  `([], None, None)`.
+
+Every registered provider carries a `LoaderLicense` (`COMMERCIAL_OK` /
+`PERSONAL_ONLY` / `UNCLEAR`, `adapters/base.py`) for future launch-readiness
+auditing — metadata only, not enforced yet. `DataAdapter` (company/
+fundamentals/filings — Edgar vs. yfinance) is deliberately **not** part of
+this registry: it's dispatched by an explicit user-facing `?source=` choice,
+not automatic fallback (see §9 Rule 1) — that's intentional product
+behavior, not a gap to close later. This registry shape is the foundation
+future data-source expansion (new exchanges, new asset classes, alternative
+data types) plugs into as small, uniform registry entries rather than
+bespoke integrations each time.
 
 **Phased adoption order** (fragile last, each gated):
 1. Freshness/delay labeling (no new adapter).
@@ -229,21 +252,30 @@ ever reconsider real sharding: a single free DB **>80 % full of non-purgeable
 data** — effectively never for the cache.
 
 **(d) Historical data for backtesting (biggest future consumer) → R2 + DuckDB.**
-Sizing: 20 y daily OHLC ≈ 5 000 rows/ticker ≈ ~50 KB Parquet; **5 000 tickers ×
-20 y ≈ ~1.25 GB** — blows Neon's 0.5 GB but fits R2's **10 GB free (zero egress)**
-comfortably. Bulk-source from **Stooq** (decades of free daily OHLC, bulk CSV) +
-`yf.download(threads=True)` for gaps; store as Parquet on R2; backtests query with
-**DuckDB directly over R2 HTTP** (no DB server needed). Build only when the
-strategy creator is built.
+Sizing: 20 y daily OHLC ≈ 5 000 rows/ticker, ~250 KB Parquet per ticker
+(measured — the original ~50 KB estimate undercounted by ~5x, see PROGRESS.md
+Session 31); the real 567-ticker backfill produced 117 MB total, **~1.4% of
+R2's 10 GB free tier (zero egress)** — still trivial even at the corrected
+number. Bulk-source from **yfinance** (`yf.download`) — Stooq, the originally
+planned bulk-CSV source, turned out hard-blocked by a site-wide JS anti-bot
+challenge plus a paywalled bulk-zip subdomain (same class of block as
+B5/nsepython-Akamai, §8 K2), so no workaround was attempted; store as Parquet
+on R2; backtests query with **DuckDB directly over R2 HTTP** (no DB server
+needed) — mechanism proven end-to-end including a real DuckDB-over-R2-HTTP
+query (PROGRESS.md Session 33), but `historical_data.py` still reads local
+disk; production has not been cut over to R2.
 
 ## 6. Patterns adopted from comparable products (P4)
 
 1. **OpenBB — standardized provider interface + priority-list fallback**
    ("connect once, consume everywhere"). *How they do it:* 100+ sources behind one
    interface; user sets a provider or an ordered list, first with valid creds wins.
-   *How we do it free:* Tickr already has `DataAdapter`; formalize a
-   `(data_type, asset_class) → ordered provider list` registry with yfinance as
-   universal fallback. This is the backbone of the Aggressive multi-source plan.
+   *How we do it free:* `services/provider_registry.py`'s `(data_type,
+   asset_class) → ordered provider list` (§4), with yfinance as universal
+   fallback — built out across B2-B4 for `quote` and generalized in Phase 9.2
+   to also cover `risk_free_rate` and `ohlc`. `DataAdapter`
+   (company/fundamentals/filings) stays outside this registry by design (§9
+   Rule 1) — it's an explicit `?source=` choice, not a fallback chain.
 2. **Ghostfolio — Redis market-data cache + scheduled fetch, in-memory fallback.**
    *How they do it:* Redis caches quotes/FX; a Market Data Service fetches all
    tracked symbols on a schedule; without Redis it falls back to in-memory + rate-
@@ -257,8 +289,10 @@ strategy creator is built.
    *How we do it free:* adopt **selectively** — a Binance/Finnhub WS pushes live
    ticks only for the **currently-viewed** symbol; never build general WS fan-out.
 5. **Backtesting stacks (OpenBB extensions, quant tooling) — bulk flat files over
-   per-request APIs for history.** *How we do it free:* Stooq bulk CSV → Parquet on
-   R2, queried by DuckDB (§5d).
+   per-request APIs for history.** *How we do it free:* yfinance bulk download →
+   Parquet on R2, queried by DuckDB (§5d) — Stooq, the originally planned
+   bulk-CSV source, turned out to be hard-blocked by a site-wide anti-bot
+   challenge (see PROGRESS.md Session 31).
 
 ## 7. Migration sequencing (one independently-verifiable deliverable per session)
 
@@ -334,16 +368,32 @@ These are the canonical, load-bearing rules from the original architecture doc.
 Everything in §1–§8 must stay consistent with them.
 
 ### Rule 1 — Adapter pattern: the only way to add a data source
-Each source implements `DataAdapter` (`engine/app/adapters/base.py`):
+Two source-facing shapes exist (`engine/app/adapters/base.py`), chosen by
+what the source can serve:
+
+**`DataAdapter`** — company identity, fundamentals, filings:
 ```python
 async def get_company(ticker, market) -> CompanyIdentity
 async def get_fundamentals(company, period, limit) -> List[NormalizedFundamentals]
 async def get_filings(company, filing_types, limit) -> List[FilingReference]
 ```
-The engine only ever calls this interface; raw API responses never cross the
-adapter boundary. Adding a source (Binance, Finnhub, nsepython, FX) = new file(s)
-in `adapters/`, registered in the provider registry (§4) — zero engine-core
-changes.
+Implementations (Edgar, yfinance-as-adapter) are picked by an explicit
+user-facing `?source=` choice, not automatic fallback — deliberate product
+behavior, not a gap in the registry.
+
+**`Loader`-family protocols** (`QuoteProvider`, `RateProvider`, and an
+equity-OHLC loader) — narrower, capability-specific shapes for sources that
+only ever serve one kind of data (Coinbase/Finnhub never do fundamentals;
+FRED never does quotes; a Parquet cache never does either). These register
+into `services/provider_registry.py`'s `(data_type, asset_class) → ordered
+provider list` (§4/§6) and get automatic first-success-wins fallback.
+
+In both cases the engine only ever calls the interface; raw API responses
+never cross the adapter boundary. Every implementation of either shape also
+carries a `LoaderLicense` (`COMMERCIAL_OK`/`PERSONAL_ONLY`/`UNCLEAR`) for
+future launch-readiness auditing — metadata only, not enforced yet. Adding a
+source = new file(s) in `adapters/`, implementing whichever shape fits — zero
+engine-core changes either way.
 
 ### Rule 2 — Internal schema: market-aware from day one
 Every security carries `market`, `exchange`, `currency` explicitly
