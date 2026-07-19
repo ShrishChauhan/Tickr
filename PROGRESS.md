@@ -2039,3 +2039,61 @@ citation: PROGRESS.md (Sessions 36/37, above) had recorded composer Session
 2's wiring commit as `2a61e01`, which is not reachable from `main` — the real
 commit for that work, confirmed via `git log`, is `ceb9c7b`. Both references
 above are now fixed.
+
+## Session 41 (country reference model) — Country -> exchanges -> universe keys, commit fb3546e — 2026-07-19
+
+### What landed
+
+`fb3546e` adds a static country reference model, four files, 234 lines, no deletions:
+
+- `schema/country.py` — `Country` pydantic model: `iso3`/`iso2`/`name`/
+  `market` (Optional, `None` for the ~210 countries outside Tickr's 7
+  supported markets)/`exchanges`/`universe_keys`/`macro_data_available`
+  (placeholder, always `False`), plus three computed fields — `is_linked`
+  (`market is not None`), `has_exchange_data` (`bool(exchanges)`),
+  `has_company_data` (`bool(universe_keys)`).
+- `services/countries.py` — `MARKET_EXCHANGES` and `COUNTRY_UNIVERSE_KEYS`,
+  two hand-curated (not derived from `adapters/yfinance.py`) static dicts
+  covering the 7 markets Tickr already supports (US/UK/DE/JP/IN/BR/MX);
+  `LINKED_COUNTRIES` built from both; `get_country()` (case-insensitive
+  ISO3 lookup, `None` for unknown codes rather than a fabricated stub),
+  `list_linked_countries()`, `get_major_companies()` (flattens + de-dupes a
+  country's `universe_keys` through the existing
+  `services.universes.load_universe()`, first-seen-ticker wins).
+- `schema/__init__.py` — exports `Country` from the package's public
+  surface (2-line addition).
+- `tests/test_countries.py` — 12 tests: linked lookups (USA/India/Germany),
+  unknown/lowercase ISO3 handling, the unlinked-country shape
+  (`Country(iso3=..., name=...)`, no `market`), computed-field round-trip
+  through `model_dump()`, two-way registry-consistency checks
+  (`MARKET_EXCHANGES`/`COUNTRY_UNIVERSE_KEYS` keys match the `Market` enum;
+  `COUNTRY_UNIVERSE_KEYS` values match `known_universe_keys()` exactly, both
+  directions), and `get_major_companies()` dedup + empty-country behavior.
+
+### What this explicitly is not
+
+No `CoverageTier` concept exists anywhere in this commit. No `country_code`
+field exists on `CompanyIdentity`, and nothing resolves a company back to a
+`Country` — `services/company.py` and `schema/company.py` are untouched.
+Country data is hand-curated Python dicts, not a `countries.json` file. This
+is the reference model only; wiring it into company identity is future work.
+
+### Verified
+
+`import app.main` clean; 132/132 tests pass repo-wide (119 pre-existing +
+13 new).
+
+### Process note
+
+This work sat uncommitted across several session boundaries before landing.
+Two commit attempts were made and rejected before this one: the first
+proposed a commit message describing features that don't exist in the code
+(a `CoverageTier` enum, a `country_code` field, a `test_no_orphan_tickers`
+test) — traced to the message being drafted from an earlier plan's intended
+scope rather than the actual diff. The second referenced a specific
+completion commit hash (`76ba5bb`) and downstream session numbers that also
+didn't exist — no such commit was ever created. Both were caught by running
+`git status`/`git diff --stat`/`git cat-file -t <hash>` before staging
+anything, rather than trusting the proposed message or hash at face value.
+`fb3546e` is the actual, sole commit for this work, built from a message
+checked line-by-line against `git show`'s real diff.
