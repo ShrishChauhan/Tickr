@@ -31,6 +31,7 @@ EXCHANGE_DISPLAY = {
     "TAI": "TWSE",   "HKG": "HKEX",
     "SHH": "SSE",    "SHZ": "SZSE",
     "SAU": "TADAWUL",
+    "JNB": "JSE",
 }
 
 _NON_EQUITY_QUOTE_TYPES = {"FUTURE", "CRYPTOCURRENCY", "CURRENCY", "INDEX", "ETF", "MUTUALFUND"}
@@ -60,6 +61,7 @@ _CURRENCY_TO_MARKET = {
     "HKD": Market.HK,
     "CNY": Market.CN,
     "SAR": Market.SA,
+    "ZAR": Market.ZA,
 }
 
 

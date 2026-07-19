@@ -4,8 +4,8 @@ import pytest
 from datetime import date
 
 from app.adapters.edgar import EdgarAdapter
-from app.adapters.yfinance import YFinanceAdapter
-from app.schema import CompanyIdentity, NormalizedFundamentals, FilingReference, Market, Currency
+from app.adapters.yfinance import YFinanceAdapter, YFinanceQuoteProvider
+from app.schema import CompanyIdentity, NormalizedFundamentals, FilingReference, Market, Exchange, Currency
 from app.schema.fundamentals import Period, IncomeStatement, BalanceSheet, CashFlowStatement
 from app.schema.filings import FilingType
 
@@ -185,6 +185,47 @@ async def test_yfinance_get_company_jpm(yfinance):
     c = await yfinance.get_company("JPM")
     assert isinstance(c, CompanyIdentity)
     assert c.ticker == "JPM"
+
+
+# ---------------------------------------------------------------------------
+# yfinance — JSE ZAc -> ZAR conversion (Chunk 2). yfinance's own .info reports
+# JSE prices in South African cents; these assert the adapter corrects that
+# end-to-end against live data, not just that the mapping tables have the
+# right keys (test_countries.py covers the pure conversion math separately).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_yfinance_get_company_jse_reports_zar_not_zac(yfinance):
+    c = await yfinance.get_company("NPN.JO")
+    assert isinstance(c, CompanyIdentity)
+    assert c.market == Market.ZA
+    assert c.exchange == Exchange.JSE
+    assert c.currency == Currency.ZAR
+
+
+@pytest.mark.asyncio
+async def test_yfinance_quote_jse_price_is_rand_scale_not_cents_scale():
+    provider = YFinanceQuoteProvider()
+    quote = await provider.get_quote("NPN.JO")
+    assert quote["currency"] == "ZAR"
+    # Naspers has traded in the hundreds-to-low-thousands of Rand for years;
+    # the uncorrected cents figure would be 100x that (tens of thousands).
+    assert 1 < quote["current_price"] < 10000
+    assert 1 < quote["high_52w"] < 10000
+    assert 1 < quote["low_52w"] < 10000
+    # marketCap is already standard-unit in yfinance's own data — must NOT
+    # be divided again on top of that.
+    assert quote["market_cap"] > 1_000_000_000
+
+
+@pytest.mark.asyncio
+async def test_yfinance_ohlc_jse_bars_are_rand_scale_not_cents_scale():
+    provider = YFinanceQuoteProvider()
+    bars, _ = await provider.get_ohlc("NPN.JO")
+    assert len(bars) > 0
+    for bar in bars[-5:]:
+        assert 1 < bar["close"] < 10000
+        assert 1 < bar["open"] < 10000
 
 
 # ---------------------------------------------------------------------------

@@ -52,6 +52,7 @@ _EXCHANGE_MAP = {
     "SHH": Exchange.SSE,
     "SHZ": Exchange.SZSE,
     "SAU": Exchange.TADAWUL,
+    "JNB": Exchange.JSE,
 }
 
 # Ticker suffix → (exchange, market, default_currency)
@@ -73,7 +74,27 @@ _SUFFIX_MAP: dict[str, tuple] = {
     ".SS": (Exchange.SSE,     Market.CN, Currency.CNY),
     ".SZ": (Exchange.SZSE,    Market.CN, Currency.CNY),
     ".SR": (Exchange.TADAWUL, Market.SA, Currency.SAR),
+    ".JO": (Exchange.JSE,     Market.ZA, Currency.ZAR),
 }
+
+# yfinance reports some exchanges' prices in a currency sub-unit rather than
+# the standard unit (JSE: ZAc/cents, not ZAR/Rand) — keyed by ticker suffix
+# rather than the live .info currency string so OHLC-only fetches (which never
+# call .info, see YFinanceQuoteProvider.get_ohlc) don't need an extra request
+# just to check whether scaling applies. Confirmed live: marketCap/PE/book
+# value/EPS are NOT affected — yfinance already computes those in standard
+# units — only the raw per-share trading-price fields are in cents.
+_SUBUNIT_SUFFIX_SCALE: dict[str, float] = {
+    ".JO": 100.0,
+}
+
+
+def _subunit_scale(ticker: str) -> float:
+    upper = ticker.upper()
+    for suffix, scale in _SUBUNIT_SUFFIX_SCALE.items():
+        if upper.endswith(suffix):
+            return scale
+    return 1.0
 
 _CURRENCY_MAP: dict[str, Currency] = {
     "USD": Currency.USD,
@@ -91,6 +112,7 @@ _CURRENCY_MAP: dict[str, Currency] = {
     "HKD": Currency.HKD,
     "CNY": Currency.CNY,
     "SAR": Currency.SAR,
+    "ZAc": Currency.ZAR,  # South African cents — JSE reports in cents, not Rand
 }
 
 _CURRENCY_TO_MARKET: dict[Currency, Market] = {
@@ -109,6 +131,7 @@ _CURRENCY_TO_MARKET: dict[Currency, Market] = {
     Currency.HKD: Market.HK,
     Currency.CNY: Market.CN,
     Currency.SAR: Market.SA,
+    Currency.ZAR: Market.ZA,
 }
 
 _FILING_TYPE_MAP = {
@@ -516,6 +539,7 @@ def _derive_contract_month(info: dict, base_ticker: str) -> Optional[str]:
 def _sync_get_ohlc_bars(ticker: str) -> list[dict]:
     t = yf.Ticker(ticker)
     hist = t.history(period="1y", interval="1d")
+    scale = _subunit_scale(ticker)
     ohlc_bars = []
     if hist is not None and not hist.empty:
         for ts, row in hist.iterrows():
@@ -523,10 +547,10 @@ def _sync_get_ohlc_bars(ticker: str) -> list[dict]:
             try:
                 ohlc_bars.append({
                     "date": bar_date,
-                    "open": float(row["Open"]),
-                    "high": float(row["High"]),
-                    "low": float(row["Low"]),
-                    "close": float(row["Close"]),
+                    "open": float(row["Open"]) / scale,
+                    "high": float(row["High"]) / scale,
+                    "low": float(row["Low"]) / scale,
+                    "close": float(row["Close"]) / scale,
                     "volume": float(row["Volume"]) if row["Volume"] else None,
                 })
             except (KeyError, TypeError, ValueError):
@@ -572,7 +596,9 @@ class YFinanceQuoteProvider:
                 return None
 
         name = info.get("longName") or info.get("shortName") or ticker
-        currency = info.get("currency", "USD")
+        currency_raw = info.get("currency", "USD")
+        mapped_currency = _CURRENCY_MAP.get(currency_raw)
+        currency = mapped_currency.value if mapped_currency else currency_raw
         quote_type = info.get("quoteType", "")
         asset_type_map = {
             "CRYPTOCURRENCY": "crypto",
@@ -582,12 +608,21 @@ class YFinanceQuoteProvider:
         }
         asset_type = asset_type_map.get(quote_type, "equity")
 
+        scale = _subunit_scale(ticker)
         current_price = g("currentPrice") or g("regularMarketPrice") or g("ask")
+        if current_price is not None:
+            current_price /= scale
         change_24h = g("regularMarketChange")
+        if change_24h is not None:
+            change_24h /= scale
         change_24h_pct = g("regularMarketChangePercent")
         high_52w = g("fiftyTwoWeekHigh")
+        if high_52w is not None:
+            high_52w /= scale
         low_52w = g("fiftyTwoWeekLow")
-        market_cap = g("marketCap")
+        if low_52w is not None:
+            low_52w /= scale
+        market_cap = g("marketCap")  # already standard-unit, confirmed live — not scaled
         volume_24h = g("volume24Hr") or g("regularMarketVolume")
         circulating_supply = g("circulatingSupply")
 

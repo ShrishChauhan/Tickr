@@ -2,7 +2,7 @@
 # No network calls; this chunk is static reference data only.
 import pytest
 
-from app.adapters.yfinance import _SUFFIX_MAP
+from app.adapters.yfinance import _SUFFIX_MAP, _CURRENCY_MAP, _subunit_scale
 from app.schema import Country, Currency, Exchange, Market
 from app.services import countries
 from app.services.countries import (
@@ -51,7 +51,7 @@ def test_lowercase_iso3_is_normalized():
 
 
 def test_list_linked_countries_returns_all_linked():
-    assert len(list_linked_countries()) == 15
+    assert len(list_linked_countries()) == 16
     assert {c.market for c in list_linked_countries()} == set(Market)
 
 
@@ -114,6 +114,7 @@ _NEW_MARKET_SUFFIXES = [
     (".SS", Exchange.SSE,     Market.CN, Currency.CNY),
     (".SZ", Exchange.SZSE,    Market.CN, Currency.CNY),
     (".SR", Exchange.TADAWUL, Market.SA, Currency.SAR),
+    (".JO", Exchange.JSE,     Market.ZA, Currency.ZAR),
 ]
 
 
@@ -134,6 +135,7 @@ _NEW_MARKET_EXCHANGES = [
     (Market.HK, [Exchange.HKEX]),
     (Market.CN, [Exchange.SSE, Exchange.SZSE]),
     (Market.SA, [Exchange.TADAWUL]),
+    (Market.ZA, [Exchange.JSE]),
 ]
 
 
@@ -151,6 +153,7 @@ _NEW_LINKED_COUNTRIES = [
     ("HKG", "HK", "Hong Kong", Market.HK, [Exchange.HKEX]),
     ("CHN", "CN", "China", Market.CN, [Exchange.SSE, Exchange.SZSE]),
     ("SAU", "SA", "Saudi Arabia", Market.SA, [Exchange.TADAWUL]),
+    ("ZAF", "ZA", "South Africa", Market.ZA, [Exchange.JSE]),
 ]
 
 
@@ -161,6 +164,41 @@ def test_new_linked_country_is_correct(iso3, iso2, name, market, expected_exchan
     assert country.name == name
     assert country.market == market
     assert country.exchanges == expected_exchanges
+
+
+# ---------------------------------------------------------------------------
+# JSE ZAc -> ZAR conversion mechanism (Chunk 2). yfinance reports JSE prices
+# in South African cents, not Rand — _subunit_scale and _CURRENCY_MAP's ZAc
+# entry are the two pieces of logic that fix this. Tested directly here
+# (pure functions, no network) rather than only via shape checks, since a
+# typo in the divisor or the trigger condition would silently produce prices
+# 100x too large/small without ever failing a "does the key exist" check.
+# ---------------------------------------------------------------------------
+
+def test_subunit_scale_applies_to_jse_tickers():
+    assert _subunit_scale("NPN.JO") == 100.0
+    assert _subunit_scale("AGL.JO") == 100.0
+
+
+def test_subunit_scale_is_case_insensitive():
+    assert _subunit_scale("npn.jo") == 100.0
+
+
+def test_subunit_scale_defaults_to_one_for_other_markets():
+    assert _subunit_scale("AAPL") == 1.0
+    assert _subunit_scale("RY.TO") == 1.0
+    assert _subunit_scale("TSM.TW") == 1.0
+
+
+def test_subunit_scale_divides_raw_cents_to_plausible_rand():
+    # Naspers dayLow live-observed as 84000.0 (ZAc) this session -> should
+    # resolve to 840.00 (ZAR), not stay at 84000.0 or become something else.
+    raw_cents = 84000.0
+    assert raw_cents / _subunit_scale("NPN.JO") == 840.0
+
+
+def test_currency_map_resolves_zac_to_zar():
+    assert _CURRENCY_MAP["ZAc"] == Currency.ZAR
 
 
 # ---------------------------------------------------------------------------

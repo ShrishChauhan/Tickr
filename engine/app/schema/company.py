@@ -20,6 +20,7 @@ class Market(str, Enum):
     HK = "HK"  # Hong Kong
     CN = "CN"  # China (Shanghai + Shenzhen)
     SA = "SA"  # Saudi Arabia
+    ZA = "ZA"  # South Africa
 
 
 class Exchange(str, Enum):
@@ -43,6 +44,7 @@ class Exchange(str, Enum):
     SSE     = "SSE"     # Shanghai Stock Exchange
     SZSE    = "SZSE"    # Shenzhen Stock Exchange
     TADAWUL = "TADAWUL" # Saudi Exchange
+    JSE     = "JSE"     # Johannesburg Stock Exchange
     OTHER  = "OTHER"  # Fallback for unmapped exchanges
 
 
@@ -62,6 +64,7 @@ class Currency(str, Enum):
     HKD = "HKD"
     CNY = "CNY"
     SAR = "SAR"
+    ZAR = "ZAR"
 
 
 class CompanyIdentity(BaseModel):

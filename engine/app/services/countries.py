@@ -28,6 +28,7 @@ MARKET_EXCHANGES: Dict[Market, List[Exchange]] = {
     Market.HK: [Exchange.HKEX],
     Market.CN: [Exchange.SSE, Exchange.SZSE],
     Market.SA: [Exchange.TADAWUL],
+    Market.ZA: [Exchange.JSE],
 }
 
 # Market -> universes.py keys representing "major companies" for that market.
@@ -51,6 +52,7 @@ COUNTRY_UNIVERSE_KEYS: Dict[Market, List[str]] = {
     Market.HK: [],
     Market.CN: [],
     Market.SA: [],
+    Market.ZA: [],
 }
 
 
@@ -81,6 +83,7 @@ LINKED_COUNTRIES: Dict[str, Country] = {
     "HKG": _build_country("HKG", "HK", "Hong Kong", Market.HK),
     "CHN": _build_country("CHN", "CN", "China", Market.CN),
     "SAU": _build_country("SAU", "SA", "Saudi Arabia", Market.SA),
+    "ZAF": _build_country("ZAF", "ZA", "South Africa", Market.ZA),
 }
 
 
