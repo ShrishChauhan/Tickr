@@ -12,6 +12,12 @@ from ..schema import NormalizedFundamentals, Period, IncomeStatement, BalanceShe
 from ..schema import FilingReference, FilingType
 from ..schema import ScreenerFields
 
+# NOTE: services/company.py's EXCHANGE_DISPLAY is an independently-maintained
+# duplicate of this map (raw yfinance exchange code -> display string, not kept
+# in sync by any test) — e.g. EXCHANGE_DISPLAY carries "CCC"/"CCY" entries this
+# map lacks (crypto/forex, out of this map's equity-only scope), while this map
+# carries "NYE"/"PCX"/"ASQ" entries EXCHANGE_DISPLAY lacks. Drift is real and
+# active, not theoretical — not resolved here, just flagged.
 _EXCHANGE_MAP = {
     # NASDAQ tiers
     "NMS": Exchange.NASDAQ,
@@ -36,6 +42,16 @@ _EXCHANGE_MAP = {
     "BOM": Exchange.BSE,
     "SAO": Exchange.B3,
     "MEX": Exchange.BMV,
+    "TOR": Exchange.TSX,
+    "ASX": Exchange.ASX,
+    "EBS": Exchange.SIX,
+    "KSC": Exchange.KOSPI,
+    "KOE": Exchange.KOSDAQ,
+    "TAI": Exchange.TWSE,
+    "HKG": Exchange.HKEX,
+    "SHH": Exchange.SSE,
+    "SHZ": Exchange.SZSE,
+    "SAU": Exchange.TADAWUL,
 }
 
 # Ticker suffix → (exchange, market, default_currency)
@@ -47,6 +63,16 @@ _SUFFIX_MAP: dict[str, tuple] = {
     ".BO": (Exchange.BSE,   Market.IN, Currency.INR),
     ".SA": (Exchange.B3,    Market.BR, Currency.BRL),
     ".MX": (Exchange.BMV,   Market.MX, Currency.MXN),
+    ".TO": (Exchange.TSX,     Market.CA, Currency.CAD),
+    ".AX": (Exchange.ASX,     Market.AU, Currency.AUD),
+    ".SW": (Exchange.SIX,     Market.CH, Currency.CHF),
+    ".KS": (Exchange.KOSPI,   Market.KR, Currency.KRW),
+    ".KQ": (Exchange.KOSDAQ,  Market.KR, Currency.KRW),
+    ".TW": (Exchange.TWSE,    Market.TW, Currency.TWD),
+    ".HK": (Exchange.HKEX,    Market.HK, Currency.HKD),
+    ".SS": (Exchange.SSE,     Market.CN, Currency.CNY),
+    ".SZ": (Exchange.SZSE,    Market.CN, Currency.CNY),
+    ".SR": (Exchange.TADAWUL, Market.SA, Currency.SAR),
 }
 
 _CURRENCY_MAP: dict[str, Currency] = {
@@ -57,6 +83,14 @@ _CURRENCY_MAP: dict[str, Currency] = {
     "INR": Currency.INR,
     "BRL": Currency.BRL,
     "MXN": Currency.MXN,
+    "CAD": Currency.CAD,
+    "AUD": Currency.AUD,
+    "CHF": Currency.CHF,
+    "KRW": Currency.KRW,
+    "TWD": Currency.TWD,
+    "HKD": Currency.HKD,
+    "CNY": Currency.CNY,
+    "SAR": Currency.SAR,
 }
 
 _CURRENCY_TO_MARKET: dict[Currency, Market] = {
@@ -67,6 +101,14 @@ _CURRENCY_TO_MARKET: dict[Currency, Market] = {
     Currency.INR: Market.IN,
     Currency.BRL: Market.BR,
     Currency.MXN: Market.MX,
+    Currency.CAD: Market.CA,
+    Currency.AUD: Market.AU,
+    Currency.CHF: Market.CH,
+    Currency.KRW: Market.KR,
+    Currency.TWD: Market.TW,
+    Currency.HKD: Market.HK,
+    Currency.CNY: Market.CN,
+    Currency.SAR: Market.SA,
 }
 
 _FILING_TYPE_MAP = {

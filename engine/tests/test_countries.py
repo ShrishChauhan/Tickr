@@ -46,8 +46,8 @@ def test_lowercase_iso3_is_normalized():
     assert get_country("ind") is get_country("IND")
 
 
-def test_list_linked_countries_returns_all_seven():
-    assert len(list_linked_countries()) == 7
+def test_list_linked_countries_returns_all_linked():
+    assert len(list_linked_countries()) == 15
     assert {c.market for c in list_linked_countries()} == set(Market)
 
 

@@ -12,6 +12,14 @@ class Market(str, Enum):
     IN = "IN"
     BR = "BR"
     MX = "MX"
+    CA = "CA"  # Canada
+    AU = "AU"  # Australia
+    CH = "CH"  # Switzerland
+    KR = "KR"  # South Korea (KOSPI + KOSDAQ)
+    TW = "TW"  # Taiwan
+    HK = "HK"  # Hong Kong
+    CN = "CN"  # China (Shanghai + Shenzhen)
+    SA = "SA"  # Saudi Arabia
 
 
 class Exchange(str, Enum):
@@ -25,6 +33,16 @@ class Exchange(str, Enum):
     BSE    = "BSE"    # Bombay Stock Exchange
     B3     = "B3"     # Brasil Bolsa Balcão
     BMV    = "BMV"    # Bolsa Mexicana de Valores
+    TSX     = "TSX"     # Toronto Stock Exchange
+    ASX     = "ASX"     # Australian Securities Exchange
+    SIX     = "SIX"     # SIX Swiss Exchange
+    KOSPI   = "KOSPI"   # Korea Exchange — main board
+    KOSDAQ  = "KOSDAQ"  # Korea Exchange — KOSDAQ tier
+    TWSE    = "TWSE"    # Taiwan Stock Exchange
+    HKEX    = "HKEX"    # Hong Kong Stock Exchange
+    SSE     = "SSE"     # Shanghai Stock Exchange
+    SZSE    = "SZSE"    # Shenzhen Stock Exchange
+    TADAWUL = "TADAWUL" # Saudi Exchange
     OTHER  = "OTHER"  # Fallback for unmapped exchanges
 
 
@@ -36,6 +54,14 @@ class Currency(str, Enum):
     INR = "INR"
     BRL = "BRL"
     MXN = "MXN"
+    CAD = "CAD"
+    AUD = "AUD"
+    CHF = "CHF"
+    KRW = "KRW"
+    TWD = "TWD"
+    HKD = "HKD"
+    CNY = "CNY"
+    SAR = "SAR"
 
 
 class CompanyIdentity(BaseModel):

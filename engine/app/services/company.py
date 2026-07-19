@@ -10,6 +10,13 @@ from ..cache.ttl_config import COMPANY_INFO_TTL_SECONDS
 from ..schema import CompanyIdentity
 from ..schema.company import Currency, Exchange, Market
 
+# NOTE: adapters/yfinance.py's _EXCHANGE_MAP is an independently-maintained
+# duplicate of this map (raw yfinance exchange code -> Exchange, via a display
+# string here vs. direct enum there — not kept in sync by any test) — e.g. this
+# map carries "CCC"/"CCY" entries _EXCHANGE_MAP lacks (crypto/forex, out of
+# _EXCHANGE_MAP's equity-only scope), while _EXCHANGE_MAP carries "NYE"/"PCX"/
+# "ASQ" entries this map lacks. Drift is real and active, not theoretical —
+# not resolved here, just flagged.
 EXCHANGE_DISPLAY = {
     "NMS": "NASDAQ", "NGM": "NASDAQ", "NCM": "NASDAQ",
     "NYQ": "NYSE",   "ASE": "AMEX",
@@ -19,6 +26,11 @@ EXCHANGE_DISPLAY = {
     "NSI": "NSE",    "BSE": "BSE",    "BOM": "BSE",
     "SAO": "B3",     "MEX": "BMV",
     "CCC": "Crypto", "CCY": "Forex",
+    "TOR": "TSX",    "ASX": "ASX",    "EBS": "SIX",
+    "KSC": "KOSPI",  "KOE": "KOSDAQ",
+    "TAI": "TWSE",   "HKG": "HKEX",
+    "SHH": "SSE",    "SHZ": "SZSE",
+    "SAU": "TADAWUL",
 }
 
 _NON_EQUITY_QUOTE_TYPES = {"FUTURE", "CRYPTOCURRENCY", "CURRENCY", "INDEX", "ETF", "MUTUALFUND"}
@@ -40,6 +52,14 @@ _CURRENCY_TO_MARKET = {
     "INR": Market.IN,
     "BRL": Market.BR,
     "MXN": Market.MX,
+    "CAD": Market.CA,
+    "AUD": Market.AU,
+    "CHF": Market.CH,
+    "KRW": Market.KR,
+    "TWD": Market.TW,
+    "HKD": Market.HK,
+    "CNY": Market.CN,
+    "SAR": Market.SA,
 }
 
 

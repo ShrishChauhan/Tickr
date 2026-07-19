@@ -20,6 +20,14 @@ MARKET_EXCHANGES: Dict[Market, List[Exchange]] = {
     Market.IN: [Exchange.NSE, Exchange.BSE],
     Market.BR: [Exchange.B3],
     Market.MX: [Exchange.BMV],
+    Market.CA: [Exchange.TSX],
+    Market.AU: [Exchange.ASX],
+    Market.CH: [Exchange.SIX],
+    Market.KR: [Exchange.KOSPI, Exchange.KOSDAQ],
+    Market.TW: [Exchange.TWSE],
+    Market.HK: [Exchange.HKEX],
+    Market.CN: [Exchange.SSE, Exchange.SZSE],
+    Market.SA: [Exchange.TADAWUL],
 }
 
 # Market -> universes.py keys representing "major companies" for that market.
@@ -35,6 +43,14 @@ COUNTRY_UNIVERSE_KEYS: Dict[Market, List[str]] = {
     Market.IN: ["nifty50"],
     Market.BR: [],
     Market.MX: [],
+    Market.CA: [],
+    Market.AU: [],
+    Market.CH: [],
+    Market.KR: [],
+    Market.TW: [],
+    Market.HK: [],
+    Market.CN: [],
+    Market.SA: [],
 }
 
 
@@ -57,6 +73,14 @@ LINKED_COUNTRIES: Dict[str, Country] = {
     "IND": _build_country("IND", "IN", "India", Market.IN),
     "BRA": _build_country("BRA", "BR", "Brazil", Market.BR),
     "MEX": _build_country("MEX", "MX", "Mexico", Market.MX),
+    "CAN": _build_country("CAN", "CA", "Canada", Market.CA),
+    "AUS": _build_country("AUS", "AU", "Australia", Market.AU),
+    "CHE": _build_country("CHE", "CH", "Switzerland", Market.CH),
+    "KOR": _build_country("KOR", "KR", "South Korea", Market.KR),
+    "TWN": _build_country("TWN", "TW", "Taiwan", Market.TW),
+    "HKG": _build_country("HKG", "HK", "Hong Kong", Market.HK),
+    "CHN": _build_country("CHN", "CN", "China", Market.CN),
+    "SAU": _build_country("SAU", "SA", "Saudi Arabia", Market.SA),
 }
 
 
