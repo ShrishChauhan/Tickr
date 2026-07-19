@@ -2189,3 +2189,101 @@ All three agreed on real `Market`/`Exchange`/`Currency` values and
 non-empty OHLC history for every market, including Hong Kong and Saudi
 Arabia specifically re-verified after a request to confirm the live-check
 claim wasn't just a summary of a prior run.
+
+## Session 43 (Bucket-A market expansion, Chunk 2) — Johannesburg Stock Exchange + ZAc→ZAR conversion, commit `d17c980` — 2026-07-19
+
+### What landed
+
+Chunk 1 (`18cdeb9`) deliberately excluded Johannesburg because yfinance
+reports `.JO` tickers' prices in South African cents (`"ZAc"`), not Rand
+(`"ZAR"`) — a genuinely new problem, since nothing in the schema had ever
+represented a currency sub-unit. This session designed and implemented that
+conversion, scoped to South Africa alone. 7 files, 133 insertions:
+
+- `schema/company.py` — `Market.ZA`, `Exchange.JSE`, `Currency.ZAR`.
+- `adapters/yfinance.py` — `.JO`/`"JNB"` wired through the usual 4 maps
+  (`_EXCHANGE_MAP`, `_SUFFIX_MAP`, `_CURRENCY_MAP`, `_CURRENCY_TO_MARKET`),
+  plus the new mechanism: a `_SUBUNIT_SUFFIX_SCALE = {".JO": 100.0}` dict
+  and a `_subunit_scale(ticker)` helper, applied to divide only the raw
+  per-share price fields — `_sync_get_ohlc_bars`'s open/high/low/close, and
+  `_sync_get_quote`'s current_price/change_24h/high_52w/low_52w. Also fixed
+  `_sync_get_quote`'s `currency` field, which previously passed
+  `.info["currency"]` straight through unmapped (would have literally been
+  `"ZAc"` on the wire) — now resolved through `_CURRENCY_MAP` like the
+  company-identity path already did.
+- `services/company.py` / `services/countries.py` / `web/lib/format.ts` —
+  same fan-out shape as every other market (`EXCHANGE_DISPLAY`,
+  `_CURRENCY_TO_MARKET`, `MARKET_EXCHANGES`, `COUNTRY_UNIVERSE_KEYS`,
+  `LINKED_COUNTRIES`, `CURRENCY_SYMBOL`).
+- `tests/test_countries.py` — extended the 3 existing Bucket-A parametrized
+  tables with South Africa's row, bumped the count assertion (15 → 16), and
+  added 5 new pure-function tests against `_subunit_scale`/`_CURRENCY_MAP`
+  directly (no network) — specifically to catch a wrong divisor or a wrong
+  trigger condition, which a shape/key-existence check would not catch.
+- `tests/test_adapters.py` — 3 new live integration tests (real yfinance
+  calls, this file's existing "no mocks" convention) asserting the
+  conversion end-to-end: `get_company("NPN.JO")` resolves to
+  `Currency.ZAR`, and both the quote and OHLC paths return Rand-scale
+  (hundreds, not tens-of-thousands) prices.
+
+### The design decision
+
+Two separate mechanisms, not one: (1) the currency *label* fix
+(`_CURRENCY_MAP["ZAc"] = Currency.ZAR`) and (2) the numeric *scaling* fix
+(`_SUBUNIT_SUFFIX_SCALE`), because they're keyed differently on purpose.
+Scaling is suffix-driven, not driven by the live `.info["currency"]` string
+— `_sync_get_ohlc_bars` never calls `.info` at all (deliberately decoupled
+from the quote fetch since the Session 24 cache-TTL split), so gating the
+scale check on the info-string would force an extra HTTP call onto every
+OHLC-only fetch, for every market, just to check whether scaling applies.
+The ticker suffix is already known synchronously with zero network cost —
+same signal `_SUFFIX_MAP` already uses to resolve exchange/market/currency.
+
+Also confirmed live, not assumed: **not every number needs dividing.**
+`marketCap`, `trailingPE`, `priceToBook`, `bookValue`, and `trailingEps` are
+already correctly computed by yfinance in standard Rand units — cross-checked
+`marketCap` against `sharesOutstanding × (raw price / 100)` and it only
+reconciles at the divided price, confirming yfinance itself already treats
+those derived fields as standard-unit. Only the raw per-share trading-price
+fields needed the divide.
+
+### What this explicitly is not
+
+Two things were found and flagged but deliberately not fixed, matching this
+project's practice of flagging tangential findings without fixing them
+mid-chunk (see Chunk 1's `EXCHANGE_DISPLAY` drift flag): Naspers's
+`financialCurrency` comes back as `"USD"` — its income statement/balance
+sheet are in a *third* currency, neither ZAR nor ZAc, and
+`_sync_get_fundamentals` stamps `company.currency` onto
+`NormalizedFundamentals` unconditionally — a pre-existing bug, not JSE-
+specific (any market where `financialCurrency` diverges from the trading
+currency has it). Separately, `_CURRENCY_MAP` still has no `"GBp"` entry —
+the LSE's own well-known pence/pound sub-unit quirk — so a `.L` ticker
+whose `.info["currency"]` comes back `"GBp"` would still silently fall back
+to `Currency.USD` today; not touched here since UK already ships and
+changing it risks an un-asked-for live regression.
+
+### Housekeeping note
+
+The session's resume instructions cited a commit `d2ad699` for Chunk 1's
+regression tests. `git log` showed no such commit exists — the actual test
+work is `1328d4a` + `3faf834` (the self-referential-assertion fix) +
+`e889c4f` (docs). Caught by checking `git log` before proceeding, per this
+project's own verify-before-trusting discipline; corrected in the working
+plan rather than carried forward silently.
+
+### Verified
+
+169/169 tests passing (158 → 169). Three independent live paths, same
+standard as Chunk 1: (1) direct service-layer calls — both the pytest
+integration tests above and a standalone script calling
+`provider_registry.get_quote("NPN.JO")` directly, confirming the
+`("quote","equity")` chain's Finnhub-first entry fails over cleanly to
+yfinance for a JSE ticker (`source: yfinance`, `currency: ZAR`,
+`current_price: 840.0`, `market_cap` unchanged); (2) a real running-server
+HTTP call to `GET /assets/NPN.JO/price`, confirming the same over the wire,
+OHLC bars all in the ~R800–1300 range; (3) confirmed `GET
+/companies/NPN.JO` 404s — then confirmed `GET /companies/RY.TO` (an
+already-shipped Chunk-1 market, untouched this session) 404s identically,
+proving this is pre-existing endpoint behavior unrelated to this chunk's
+changes, not a regression.
