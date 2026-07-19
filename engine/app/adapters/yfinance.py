@@ -53,6 +53,14 @@ _EXCHANGE_MAP = {
     "SHZ": Exchange.SZSE,
     "SAU": Exchange.TADAWUL,
     "JNB": Exchange.JSE,
+    "PAR": Exchange.EURONEXT_PARIS,
+    "AMS": Exchange.EURONEXT_AMSTERDAM,
+    "BRU": Exchange.EURONEXT_BRUSSELS,
+    "ISE": Exchange.EURONEXT_DUBLIN,
+    "LIS": Exchange.EURONEXT_LISBON,
+    "MIL": Exchange.EURONEXT_MILAN,
+    "OSL": Exchange.EURONEXT_OSLO,
+    "ATH": Exchange.EURONEXT_ATHENS,
 }
 
 # Ticker suffix → (exchange, market, default_currency)
@@ -75,6 +83,14 @@ _SUFFIX_MAP: dict[str, tuple] = {
     ".SZ": (Exchange.SZSE,    Market.CN, Currency.CNY),
     ".SR": (Exchange.TADAWUL, Market.SA, Currency.SAR),
     ".JO": (Exchange.JSE,     Market.ZA, Currency.ZAR),
+    ".PA": (Exchange.EURONEXT_PARIS,     Market.FR, Currency.EUR),
+    ".AS": (Exchange.EURONEXT_AMSTERDAM, Market.NL, Currency.EUR),
+    ".BR": (Exchange.EURONEXT_BRUSSELS,  Market.BE, Currency.EUR),
+    ".IR": (Exchange.EURONEXT_DUBLIN,    Market.IE, Currency.EUR),
+    ".LS": (Exchange.EURONEXT_LISBON,    Market.PT, Currency.EUR),
+    ".MI": (Exchange.EURONEXT_MILAN,     Market.IT, Currency.EUR),
+    ".OL": (Exchange.EURONEXT_OSLO,      Market.NO, Currency.NOK),
+    ".AT": (Exchange.EURONEXT_ATHENS,    Market.GR, Currency.EUR),
 }
 
 # yfinance reports some exchanges' prices in a currency sub-unit rather than
@@ -113,6 +129,7 @@ _CURRENCY_MAP: dict[str, Currency] = {
     "CNY": Currency.CNY,
     "SAR": Currency.SAR,
     "ZAc": Currency.ZAR,  # South African cents — JSE reports in cents, not Rand
+    "NOK": Currency.NOK,
 }
 
 _CURRENCY_TO_MARKET: dict[Currency, Market] = {
@@ -132,6 +149,7 @@ _CURRENCY_TO_MARKET: dict[Currency, Market] = {
     Currency.CNY: Market.CN,
     Currency.SAR: Market.SA,
     Currency.ZAR: Market.ZA,
+    Currency.NOK: Market.NO,
 }
 
 _FILING_TYPE_MAP = {

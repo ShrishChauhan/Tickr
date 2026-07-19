@@ -51,7 +51,7 @@ def test_lowercase_iso3_is_normalized():
 
 
 def test_list_linked_countries_returns_all_linked():
-    assert len(list_linked_countries()) == 16
+    assert len(list_linked_countries()) == 24
     assert {c.market for c in list_linked_countries()} == set(Market)
 
 
@@ -199,6 +199,74 @@ def test_subunit_scale_divides_raw_cents_to_plausible_rand():
 
 def test_currency_map_resolves_zac_to_zar():
     assert _CURRENCY_MAP["ZAc"] == Currency.ZAR
+
+
+# ---------------------------------------------------------------------------
+# Bucket-B Chunk 1: Euronext (8 markets, all live-verified this session).
+# Same rationale as the Bucket-A block above — hardcoded literals, not shape
+# checks, so a typo in any map entry fails loudly.
+# ---------------------------------------------------------------------------
+
+_EURONEXT_MARKET_SUFFIXES = [
+    (".PA", Exchange.EURONEXT_PARIS,     Market.FR, Currency.EUR),
+    (".AS", Exchange.EURONEXT_AMSTERDAM, Market.NL, Currency.EUR),
+    (".BR", Exchange.EURONEXT_BRUSSELS,  Market.BE, Currency.EUR),
+    (".IR", Exchange.EURONEXT_DUBLIN,    Market.IE, Currency.EUR),
+    (".LS", Exchange.EURONEXT_LISBON,    Market.PT, Currency.EUR),
+    (".MI", Exchange.EURONEXT_MILAN,     Market.IT, Currency.EUR),
+    (".OL", Exchange.EURONEXT_OSLO,      Market.NO, Currency.NOK),
+    (".AT", Exchange.EURONEXT_ATHENS,    Market.GR, Currency.EUR),
+]
+
+
+@pytest.mark.parametrize("suffix,expected_exchange,expected_market,expected_currency", _EURONEXT_MARKET_SUFFIXES)
+def test_euronext_market_suffix_resolves_correctly(suffix, expected_exchange, expected_market, expected_currency):
+    exchange, market, currency = _SUFFIX_MAP[suffix]
+    assert exchange == expected_exchange
+    assert market == expected_market
+    assert currency == expected_currency
+
+
+_EURONEXT_MARKET_EXCHANGES = [
+    (Market.FR, [Exchange.EURONEXT_PARIS]),
+    (Market.NL, [Exchange.EURONEXT_AMSTERDAM]),
+    (Market.BE, [Exchange.EURONEXT_BRUSSELS]),
+    (Market.IE, [Exchange.EURONEXT_DUBLIN]),
+    (Market.PT, [Exchange.EURONEXT_LISBON]),
+    (Market.IT, [Exchange.EURONEXT_MILAN]),
+    (Market.NO, [Exchange.EURONEXT_OSLO]),
+    (Market.GR, [Exchange.EURONEXT_ATHENS]),
+]
+
+
+@pytest.mark.parametrize("market,expected_exchanges", _EURONEXT_MARKET_EXCHANGES)
+def test_euronext_market_exchanges_are_correct(market, expected_exchanges):
+    assert MARKET_EXCHANGES[market] == expected_exchanges
+
+
+_EURONEXT_LINKED_COUNTRIES = [
+    ("FRA", "FR", "France", Market.FR, [Exchange.EURONEXT_PARIS]),
+    ("NLD", "NL", "Netherlands", Market.NL, [Exchange.EURONEXT_AMSTERDAM]),
+    ("BEL", "BE", "Belgium", Market.BE, [Exchange.EURONEXT_BRUSSELS]),
+    ("IRL", "IE", "Ireland", Market.IE, [Exchange.EURONEXT_DUBLIN]),
+    ("PRT", "PT", "Portugal", Market.PT, [Exchange.EURONEXT_LISBON]),
+    ("ITA", "IT", "Italy", Market.IT, [Exchange.EURONEXT_MILAN]),
+    ("NOR", "NO", "Norway", Market.NO, [Exchange.EURONEXT_OSLO]),
+    ("GRC", "GR", "Greece", Market.GR, [Exchange.EURONEXT_ATHENS]),
+]
+
+
+@pytest.mark.parametrize("iso3,iso2,name,market,expected_exchanges", _EURONEXT_LINKED_COUNTRIES)
+def test_euronext_linked_country_is_correct(iso3, iso2, name, market, expected_exchanges):
+    country = LINKED_COUNTRIES[iso3]
+    assert country.iso2 == iso2
+    assert country.name == name
+    assert country.market == market
+    assert country.exchanges == expected_exchanges
+
+
+def test_currency_map_resolves_nok():
+    assert _CURRENCY_MAP["NOK"] == Currency.NOK
 
 
 # ---------------------------------------------------------------------------

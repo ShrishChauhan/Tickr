@@ -21,6 +21,14 @@ class Market(str, Enum):
     CN = "CN"  # China (Shanghai + Shenzhen)
     SA = "SA"  # Saudi Arabia
     ZA = "ZA"  # South Africa
+    FR = "FR"  # France
+    NL = "NL"  # Netherlands
+    BE = "BE"  # Belgium
+    IE = "IE"  # Ireland
+    PT = "PT"  # Portugal
+    IT = "IT"  # Italy
+    NO = "NO"  # Norway
+    GR = "GR"  # Greece
 
 
 class Exchange(str, Enum):
@@ -45,6 +53,14 @@ class Exchange(str, Enum):
     SZSE    = "SZSE"    # Shenzhen Stock Exchange
     TADAWUL = "TADAWUL" # Saudi Exchange
     JSE     = "JSE"     # Johannesburg Stock Exchange
+    EURONEXT_PARIS     = "EURONEXT_PARIS"
+    EURONEXT_AMSTERDAM = "EURONEXT_AMSTERDAM"
+    EURONEXT_BRUSSELS  = "EURONEXT_BRUSSELS"
+    EURONEXT_DUBLIN    = "EURONEXT_DUBLIN"
+    EURONEXT_LISBON    = "EURONEXT_LISBON"
+    EURONEXT_MILAN     = "EURONEXT_MILAN"
+    EURONEXT_OSLO      = "EURONEXT_OSLO"
+    EURONEXT_ATHENS    = "EURONEXT_ATHENS"
     OTHER  = "OTHER"  # Fallback for unmapped exchanges
 
 
@@ -65,6 +81,7 @@ class Currency(str, Enum):
     CNY = "CNY"
     SAR = "SAR"
     ZAR = "ZAR"
+    NOK = "NOK"
 
 
 class CompanyIdentity(BaseModel):
