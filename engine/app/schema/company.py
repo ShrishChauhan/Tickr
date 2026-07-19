@@ -29,6 +29,13 @@ class Market(str, Enum):
     IT = "IT"  # Italy
     NO = "NO"  # Norway
     GR = "GR"  # Greece
+    DK = "DK"  # Denmark
+    SE = "SE"  # Sweden
+    FI = "FI"  # Finland
+    EE = "EE"  # Estonia
+    LV = "LV"  # Latvia
+    LT = "LT"  # Lithuania
+    IS = "IS"  # Iceland
 
 
 class Exchange(str, Enum):
@@ -61,6 +68,13 @@ class Exchange(str, Enum):
     EURONEXT_MILAN     = "EURONEXT_MILAN"
     EURONEXT_OSLO      = "EURONEXT_OSLO"
     EURONEXT_ATHENS    = "EURONEXT_ATHENS"
+    NASDAQ_COPENHAGEN = "NASDAQ_COPENHAGEN"
+    NASDAQ_STOCKHOLM  = "NASDAQ_STOCKHOLM"
+    NASDAQ_HELSINKI   = "NASDAQ_HELSINKI"
+    NASDAQ_TALLINN    = "NASDAQ_TALLINN"
+    NASDAQ_RIGA       = "NASDAQ_RIGA"
+    NASDAQ_VILNIUS    = "NASDAQ_VILNIUS"
+    NASDAQ_ICELAND    = "NASDAQ_ICELAND"
     OTHER  = "OTHER"  # Fallback for unmapped exchanges
 
 
@@ -82,6 +96,9 @@ class Currency(str, Enum):
     SAR = "SAR"
     ZAR = "ZAR"
     NOK = "NOK"
+    DKK = "DKK"
+    SEK = "SEK"
+    ISK = "ISK"
 
 
 class CompanyIdentity(BaseModel):

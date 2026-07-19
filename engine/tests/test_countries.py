@@ -51,7 +51,7 @@ def test_lowercase_iso3_is_normalized():
 
 
 def test_list_linked_countries_returns_all_linked():
-    assert len(list_linked_countries()) == 24
+    assert len(list_linked_countries()) == 31
     assert {c.market for c in list_linked_countries()} == set(Market)
 
 
@@ -267,6 +267,74 @@ def test_euronext_linked_country_is_correct(iso3, iso2, name, market, expected_e
 
 def test_currency_map_resolves_nok():
     assert _CURRENCY_MAP["NOK"] == Currency.NOK
+
+
+# ---------------------------------------------------------------------------
+# Bucket-B Chunk 2: Nasdaq Nordic/Baltic (7 markets, all live-verified this
+# session — Copenhagen/Stockholm re-verified as a regression check, Helsinki/
+# Tallinn/Riga/Vilnius/Iceland verified fresh). Same rationale as the Euronext
+# block above — hardcoded literals, not shape checks.
+# ---------------------------------------------------------------------------
+
+_NORDIC_MARKET_SUFFIXES = [
+    (".CO", Exchange.NASDAQ_COPENHAGEN, Market.DK, Currency.DKK),
+    (".ST", Exchange.NASDAQ_STOCKHOLM,  Market.SE, Currency.SEK),
+    (".HE", Exchange.NASDAQ_HELSINKI,   Market.FI, Currency.EUR),
+    (".TL", Exchange.NASDAQ_TALLINN,    Market.EE, Currency.EUR),
+    (".RG", Exchange.NASDAQ_RIGA,       Market.LV, Currency.EUR),
+    (".VS", Exchange.NASDAQ_VILNIUS,    Market.LT, Currency.EUR),
+    (".IC", Exchange.NASDAQ_ICELAND,    Market.IS, Currency.ISK),
+]
+
+
+@pytest.mark.parametrize("suffix,expected_exchange,expected_market,expected_currency", _NORDIC_MARKET_SUFFIXES)
+def test_nordic_market_suffix_resolves_correctly(suffix, expected_exchange, expected_market, expected_currency):
+    exchange, market, currency = _SUFFIX_MAP[suffix]
+    assert exchange == expected_exchange
+    assert market == expected_market
+    assert currency == expected_currency
+
+
+_NORDIC_MARKET_EXCHANGES = [
+    (Market.DK, [Exchange.NASDAQ_COPENHAGEN]),
+    (Market.SE, [Exchange.NASDAQ_STOCKHOLM]),
+    (Market.FI, [Exchange.NASDAQ_HELSINKI]),
+    (Market.EE, [Exchange.NASDAQ_TALLINN]),
+    (Market.LV, [Exchange.NASDAQ_RIGA]),
+    (Market.LT, [Exchange.NASDAQ_VILNIUS]),
+    (Market.IS, [Exchange.NASDAQ_ICELAND]),
+]
+
+
+@pytest.mark.parametrize("market,expected_exchanges", _NORDIC_MARKET_EXCHANGES)
+def test_nordic_market_exchanges_are_correct(market, expected_exchanges):
+    assert MARKET_EXCHANGES[market] == expected_exchanges
+
+
+_NORDIC_LINKED_COUNTRIES = [
+    ("DNK", "DK", "Denmark", Market.DK, [Exchange.NASDAQ_COPENHAGEN]),
+    ("SWE", "SE", "Sweden", Market.SE, [Exchange.NASDAQ_STOCKHOLM]),
+    ("FIN", "FI", "Finland", Market.FI, [Exchange.NASDAQ_HELSINKI]),
+    ("EST", "EE", "Estonia", Market.EE, [Exchange.NASDAQ_TALLINN]),
+    ("LVA", "LV", "Latvia", Market.LV, [Exchange.NASDAQ_RIGA]),
+    ("LTU", "LT", "Lithuania", Market.LT, [Exchange.NASDAQ_VILNIUS]),
+    ("ISL", "IS", "Iceland", Market.IS, [Exchange.NASDAQ_ICELAND]),
+]
+
+
+@pytest.mark.parametrize("iso3,iso2,name,market,expected_exchanges", _NORDIC_LINKED_COUNTRIES)
+def test_nordic_linked_country_is_correct(iso3, iso2, name, market, expected_exchanges):
+    country = LINKED_COUNTRIES[iso3]
+    assert country.iso2 == iso2
+    assert country.name == name
+    assert country.market == market
+    assert country.exchanges == expected_exchanges
+
+
+def test_currency_map_resolves_dkk_sek_isk():
+    assert _CURRENCY_MAP["DKK"] == Currency.DKK
+    assert _CURRENCY_MAP["SEK"] == Currency.SEK
+    assert _CURRENCY_MAP["ISK"] == Currency.ISK
 
 
 # ---------------------------------------------------------------------------

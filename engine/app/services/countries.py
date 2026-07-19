@@ -37,6 +37,13 @@ MARKET_EXCHANGES: Dict[Market, List[Exchange]] = {
     Market.IT: [Exchange.EURONEXT_MILAN],
     Market.NO: [Exchange.EURONEXT_OSLO],
     Market.GR: [Exchange.EURONEXT_ATHENS],
+    Market.DK: [Exchange.NASDAQ_COPENHAGEN],
+    Market.SE: [Exchange.NASDAQ_STOCKHOLM],
+    Market.FI: [Exchange.NASDAQ_HELSINKI],
+    Market.EE: [Exchange.NASDAQ_TALLINN],
+    Market.LV: [Exchange.NASDAQ_RIGA],
+    Market.LT: [Exchange.NASDAQ_VILNIUS],
+    Market.IS: [Exchange.NASDAQ_ICELAND],
 }
 
 # Market -> universes.py keys representing "major companies" for that market.
@@ -69,6 +76,13 @@ COUNTRY_UNIVERSE_KEYS: Dict[Market, List[str]] = {
     Market.IT: [],
     Market.NO: [],
     Market.GR: [],
+    Market.DK: [],
+    Market.SE: [],
+    Market.FI: [],
+    Market.EE: [],
+    Market.LV: [],
+    Market.LT: [],
+    Market.IS: [],
 }
 
 
@@ -108,6 +122,13 @@ LINKED_COUNTRIES: Dict[str, Country] = {
     "ITA": _build_country("ITA", "IT", "Italy", Market.IT),
     "NOR": _build_country("NOR", "NO", "Norway", Market.NO),
     "GRC": _build_country("GRC", "GR", "Greece", Market.GR),
+    "DNK": _build_country("DNK", "DK", "Denmark", Market.DK),
+    "SWE": _build_country("SWE", "SE", "Sweden", Market.SE),
+    "FIN": _build_country("FIN", "FI", "Finland", Market.FI),
+    "EST": _build_country("EST", "EE", "Estonia", Market.EE),
+    "LVA": _build_country("LVA", "LV", "Latvia", Market.LV),
+    "LTU": _build_country("LTU", "LT", "Lithuania", Market.LT),
+    "ISL": _build_country("ISL", "IS", "Iceland", Market.IS),
 }
 
 

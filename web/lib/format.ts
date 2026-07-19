@@ -1,6 +1,7 @@
 const CURRENCY_SYMBOL: Record<string, string> = {
   USD: '$', GBP: '£', EUR: '€', JPY: '¥', INR: '₹', BRL: 'R$', MXN: 'MX$',
   CAD: 'CA$', AUD: 'A$', CHF: 'CHF', KRW: '₩', TWD: 'NT$', HKD: 'HK$', CNY: '¥', SAR: 'SAR', ZAR: 'R', NOK: 'kr',
+  DKK: 'kr', SEK: 'kr', ISK: 'kr',
 };
 
 export function getCurrencySymbol(currency: string): string {

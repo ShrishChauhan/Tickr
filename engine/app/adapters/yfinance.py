@@ -61,6 +61,13 @@ _EXCHANGE_MAP = {
     "MIL": Exchange.EURONEXT_MILAN,
     "OSL": Exchange.EURONEXT_OSLO,
     "ATH": Exchange.EURONEXT_ATHENS,
+    "CPH": Exchange.NASDAQ_COPENHAGEN,
+    "STO": Exchange.NASDAQ_STOCKHOLM,
+    "HEL": Exchange.NASDAQ_HELSINKI,
+    "TAL": Exchange.NASDAQ_TALLINN,
+    "RIS": Exchange.NASDAQ_RIGA,
+    "LIT": Exchange.NASDAQ_VILNIUS,
+    "ICE": Exchange.NASDAQ_ICELAND,
 }
 
 # Ticker suffix → (exchange, market, default_currency)
@@ -91,6 +98,13 @@ _SUFFIX_MAP: dict[str, tuple] = {
     ".MI": (Exchange.EURONEXT_MILAN,     Market.IT, Currency.EUR),
     ".OL": (Exchange.EURONEXT_OSLO,      Market.NO, Currency.NOK),
     ".AT": (Exchange.EURONEXT_ATHENS,    Market.GR, Currency.EUR),
+    ".CO": (Exchange.NASDAQ_COPENHAGEN, Market.DK, Currency.DKK),
+    ".ST": (Exchange.NASDAQ_STOCKHOLM,  Market.SE, Currency.SEK),
+    ".HE": (Exchange.NASDAQ_HELSINKI,   Market.FI, Currency.EUR),
+    ".TL": (Exchange.NASDAQ_TALLINN,    Market.EE, Currency.EUR),
+    ".RG": (Exchange.NASDAQ_RIGA,       Market.LV, Currency.EUR),
+    ".VS": (Exchange.NASDAQ_VILNIUS,    Market.LT, Currency.EUR),
+    ".IC": (Exchange.NASDAQ_ICELAND,    Market.IS, Currency.ISK),
 }
 
 # yfinance reports some exchanges' prices in a currency sub-unit rather than
@@ -130,6 +144,9 @@ _CURRENCY_MAP: dict[str, Currency] = {
     "SAR": Currency.SAR,
     "ZAc": Currency.ZAR,  # South African cents — JSE reports in cents, not Rand
     "NOK": Currency.NOK,
+    "DKK": Currency.DKK,
+    "SEK": Currency.SEK,
+    "ISK": Currency.ISK,
 }
 
 _CURRENCY_TO_MARKET: dict[Currency, Market] = {
@@ -150,6 +167,9 @@ _CURRENCY_TO_MARKET: dict[Currency, Market] = {
     Currency.SAR: Market.SA,
     Currency.ZAR: Market.ZA,
     Currency.NOK: Market.NO,
+    Currency.DKK: Market.DK,
+    Currency.SEK: Market.SE,
+    Currency.ISK: Market.IS,
 }
 
 _FILING_TYPE_MAP = {
