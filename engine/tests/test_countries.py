@@ -143,24 +143,24 @@ def test_new_market_exchanges_are_correct(market, expected_exchanges):
 
 
 _NEW_LINKED_COUNTRIES = [
-    ("CAN", "CA", "Canada", Market.CA),
-    ("AUS", "AU", "Australia", Market.AU),
-    ("CHE", "CH", "Switzerland", Market.CH),
-    ("KOR", "KR", "South Korea", Market.KR),
-    ("TWN", "TW", "Taiwan", Market.TW),
-    ("HKG", "HK", "Hong Kong", Market.HK),
-    ("CHN", "CN", "China", Market.CN),
-    ("SAU", "SA", "Saudi Arabia", Market.SA),
+    ("CAN", "CA", "Canada", Market.CA, [Exchange.TSX]),
+    ("AUS", "AU", "Australia", Market.AU, [Exchange.ASX]),
+    ("CHE", "CH", "Switzerland", Market.CH, [Exchange.SIX]),
+    ("KOR", "KR", "South Korea", Market.KR, [Exchange.KOSPI, Exchange.KOSDAQ]),
+    ("TWN", "TW", "Taiwan", Market.TW, [Exchange.TWSE]),
+    ("HKG", "HK", "Hong Kong", Market.HK, [Exchange.HKEX]),
+    ("CHN", "CN", "China", Market.CN, [Exchange.SSE, Exchange.SZSE]),
+    ("SAU", "SA", "Saudi Arabia", Market.SA, [Exchange.TADAWUL]),
 ]
 
 
-@pytest.mark.parametrize("iso3,iso2,name,market", _NEW_LINKED_COUNTRIES)
-def test_new_linked_country_is_correct(iso3, iso2, name, market):
+@pytest.mark.parametrize("iso3,iso2,name,market,expected_exchanges", _NEW_LINKED_COUNTRIES)
+def test_new_linked_country_is_correct(iso3, iso2, name, market, expected_exchanges):
     country = LINKED_COUNTRIES[iso3]
     assert country.iso2 == iso2
     assert country.name == name
     assert country.market == market
-    assert country.exchanges == MARKET_EXCHANGES[market]
+    assert country.exchanges == expected_exchanges
 
 
 # ---------------------------------------------------------------------------
