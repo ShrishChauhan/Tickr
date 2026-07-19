@@ -2287,3 +2287,76 @@ OHLC bars all in the ~R800–1300 range; (3) confirmed `GET
 already-shipped Chunk-1 market, untouched this session) 404s identically,
 proving this is pre-existing endpoint behavior unrelated to this chunk's
 changes, not a regression.
+
+## Session 44 (Bucket-B, Chunk 1) — Euronext: 8 new markets, commit `b923956` — 2026-07-19
+
+### What landed
+
+Six files, 133 insertions, 2 deletions: `schema/company.py` (`Market`
+FR/NL/BE/IE/PT/IT/NO/GR; `Exchange` EURONEXT_PARIS/AMSTERDAM/BRUSSELS/
+DUBLIN/LISBON/MILAN/OSLO/ATHENS; `Currency` NOK), `adapters/yfinance.py`
+(`_EXCHANGE_MAP`, `_SUFFIX_MAP` for `.PA`/`.AS`/`.BR`/`.IR`/`.LS`/`.MI`/`.OL`/
+`.AT`, `_CURRENCY_MAP`, `_CURRENCY_TO_MARKET`), `services/company.py`
+(`EXCHANGE_DISPLAY`, `_CURRENCY_TO_MARKET` mirrored), `services/countries.py`
+(`MARKET_EXCHANGES`, `COUNTRY_UNIVERSE_KEYS`, `LINKED_COUNTRIES` for
+FRA/NLD/BEL/IRL/PRT/ITA/NOR/GRC), `web/lib/format.ts` (`CURRENCY_SYMBOL` gets
+a NOK entry), and `tests/test_countries.py` (25 new parametrized cases).
+
+Each Euronext city is modeled as its own country-scoped `Market`, exactly
+like the existing per-country pattern — no new multi-country/ExchangeGroup
+concept, per the investigation session that scoped this chunk. Norway is the
+only new currency (NOK); the other 7 markets reuse the existing EUR.
+
+### Live verification approach — raw exchange codes, not just suffixes
+
+`_SUFFIX_MAP` resolution is the primary path for every non-US ticker, but
+`_EXCHANGE_MAP` (the fallback used only when suffix resolution fails) has
+carried a matching entry for every prior market's raw yfinance
+`.info["exchange"]` code since Bucket A — kept for consistency with that
+precedent, not because the fallback is actually exercised for these
+suffix-resolved tickers. Rather than guess these 8 codes, this session
+queried `.info["exchange"]` live for one real ticker per city and used the
+actual returned value: `PAR` (Paris), `AMS` (Amsterdam), `BRU` (Brussels),
+`ISE` (Dublin — the legacy "Irish Stock Exchange" code, not "DUB"), `LIS`
+(Lisbon), `MIL` (Milan), `OSL` (Oslo), `ATH` (Athens).
+
+Two ticker-guess misses surfaced along the way, both real corporate events
+rather than suffix or data-source failures: OPAP's ticker renamed to ALWN in
+March 2026 (`OPAP.AT` now 404s; `ALWN.AT` is current), and CRH delisted from
+Euronext Dublin some years back (moved its primary listing to NYSE) — Dublin
+was re-verified instead with Kerry Group (`KRZ.IR`) and Bank of Ireland
+(`BIRG.IR`).
+
+### What this explicitly is not (flagged, not fixed)
+
+Two items, matching this project's practice of flagging tangential findings
+without fixing them mid-chunk:
+
+1. The `EXCHANGE_DISPLAY` (`services/company.py`) / `_EXCHANGE_MAP`
+   (`adapters/yfinance.py`) duplicate-map drift, first flagged in Bucket A's
+   Chunk 1 (Session 42), is still present and still unfixed — this chunk
+   mirrored both maps' new entries by hand rather than resolving the
+   duplication.
+2. `web/lib/format.ts`'s `fmtPrice` hardcodes a symbol prefix only for
+   USD/EUR/GBP; NOK (like the 6 Bucket-A currencies without a dedicated
+   prefix — KRW/TWD/HKD/CNY/SAR/ZAR) falls through to the generic
+   `"{value} {currency}"` suffix rendering. `CURRENCY_SYMBOL` (the separate
+   map `getCurrencySymbol()` reads) does get a NOK entry (`'kr'`) — only
+   `fmtPrice`'s own separate hardcoded branch has the gap, and it's
+   pre-existing behavior, not a new one introduced by this chunk.
+
+### Verified
+
+194/194 tests passing (169 → 194, +25: 8 suffix-resolution + 8
+market-exchange + 8 linked-country + 1 NOK currency-map case). The count was
+reconciled exactly, not assumed: `git stash` isolated the pre-chunk baseline
+at 169 collected tests, `git stash pop` restored the chunk's changes back to
+194, and pytest's own collection count for just the new Euronext/NOK cases
+independently confirmed 25.
+
+Same 3-path standard as every prior chunk: (1) a direct script calling
+`YFinanceAdapter.get_company()` for one real ticker per new market (Paris,
+Amsterdam, Brussels, Dublin, Lisbon, Milan, Oslo, Athens), confirming correct
+`Market`/`Exchange`/`Currency` for all 8; (2) real running-server HTTP calls
+(`GET /api/v1/companies/{ticker}?source=yfinance`) against Oslo/Paris/Athens
+tickers, confirming the same over the wire; (3) full engine suite green.
