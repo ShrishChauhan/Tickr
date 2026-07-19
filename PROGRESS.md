@@ -2097,3 +2097,95 @@ didn't exist — no such commit was ever created. Both were caught by running
 anything, rather than trusting the proposed message or hash at face value.
 `fb3546e` is the actual, sole commit for this work, built from a message
 checked line-by-line against `git show`'s real diff.
+
+## Session 42 (Bucket-A market expansion, Chunk 1) — 9 new markets + regression coverage, commits 18cdeb9 + 1328d4a — 2026-07-19
+
+### What landed
+
+`18cdeb9` adds 9 new markets — Canada (TSX), Australia (ASX), Switzerland
+(SIX), South Korea (KOSPI + KOSDAQ under one `Market.KR`), Taiwan (TWSE),
+Hong Kong (HKEX), China (Shanghai SSE + Shenzhen SZSE under one `Market.CN`),
+and Saudi Arabia (Tadawul) — as pure mechanical fan-out through the existing
+yfinance suffix path, identical in kind to Tickr's original 7 markets
+(US/UK/DE/JP/IN/BR/MX). 6 files, 115 insertions:
+
+- `schema/company.py` — 8 new `Market`, 10 new `Exchange`, 8 new `Currency`
+  enum members.
+- `adapters/yfinance.py` — all 4 resolution dicts extended
+  (`_EXCHANGE_MAP`, `_SUFFIX_MAP`, `_CURRENCY_MAP`, `_CURRENCY_TO_MARKET`);
+  a comment added flagging that `services/company.py`'s `EXCHANGE_DISPLAY`
+  is an independently-maintained duplicate not kept in sync by any test —
+  citing the concrete `CCC`/`CCY` (present in `EXCHANGE_DISPLAY`, absent
+  here) and `NYE`/`PCX`/`ASQ` (present here, absent in `EXCHANGE_DISPLAY`)
+  divergence as evidence the drift is real, not theoretical. Not fixed.
+- `services/company.py` — `EXCHANGE_DISPLAY` and `_CURRENCY_TO_MARKET`
+  extended to match; mirrored drift-flag comment.
+- `services/countries.py` — `MARKET_EXCHANGES`, `COUNTRY_UNIVERSE_KEYS`
+  (empty lists — no universe files exist for these markets, same as
+  UK/DE/JP/BR/MX today), and `LINKED_COUNTRIES` extended with 8 new
+  countries (Korea and China each contribute one `Market` mapped to two
+  `Exchange` values, same shape as the existing `Market.US`→3-exchange and
+  `Market.IN`→2-exchange entries).
+- `web/lib/format.ts` — `CURRENCY_SYMBOL` extended with the 8 new
+  currencies.
+- `tests/test_countries.py` — the one existing count-based assertion
+  (`test_list_linked_countries_returns_all_seven`, hard-coded to 7) updated
+  to 15 and renamed; no new tests in this commit.
+
+`1328d4a` closes a coverage gap found immediately after `18cdeb9` landed:
+the existing registry-consistency tests only assert "every `Market` has
+*some* entry" in `MARKET_EXCHANGES`/`_SUFFIX_MAP`/`LINKED_COUNTRIES`, not
+that the entry is the *correct* one — a typo in a currency or exchange
+mapping for any of the 9 new markets would have passed CI silently. Adds
+26 parametrized cases to `test_countries.py`: 10 asserting each
+`_SUFFIX_MAP` suffix resolves to the exact `(Exchange, Market, Currency)`
+tuple (both Korea suffixes and both China suffixes checked distinctly), 8
+asserting each new `Market`'s `MARKET_EXCHANGES` entry, 8 asserting each
+new `LINKED_COUNTRIES` row's `iso2`/`name`/`market`/`exchanges`. 132 → 158
+tests. Sanity-checked live mid-session: deliberately mutated the `.HK`
+suffix's currency to `Currency.USD`, confirmed the new parametrized test
+failed with a clear diff, then reverted — confirming the coverage actually
+catches the class of regression it was written for, not just passing by
+construction.
+
+### What this explicitly is not
+
+Johannesburg (`ZAc`→`ZAR` conversion) is not part of either commit —
+deliberately excluded from Chunk 1's scope, deferred to a separate future
+session. The `EXCHANGE_DISPLAY`/`_EXCHANGE_MAP` duplicate-map drift is
+flagged with comments in both maps but not resolved. Bucket B (Euronext/
+Nasdaq Nordic per-country expansion) is untouched.
+
+### Process note
+
+`1328d4a`'s first version of `test_new_linked_country_is_correct` included
+`assert country.exchanges == MARKET_EXCHANGES[market]` — comparing
+`LINKED_COUNTRIES`'s `Country.exchanges` field against the very dict
+`services/countries.py`'s `_build_country()` populated it from
+(`exchanges=MARKET_EXCHANGES[market]`), so the assertion could never fail
+regardless of what `MARKET_EXCHANGES` actually contained: a self-referential
+check, not a real one, indistinguishable from a real assertion by its output
+(it still showed "PASSED"). Caught in review before push, not by the suite
+itself. Fixed by replacing the self-reference with the same hardcoded
+`[Exchange, ...]` literal `test_new_market_exchanges_are_correct` already
+uses, then re-verified with the same live-mutation sanity check as before —
+broke `MARKET_EXCHANGES[Market.HK]` to `[Exchange.OTHER]`, confirmed *both*
+the exchanges test and the now-fixed country test failed, reverted.
+
+### Verified
+
+Both commits: `import app.main` clean. Full suite green at each commit
+boundary (132/132 before `1328d4a`, 158/158 after, unchanged post-fix — the
+fix corrected what one test compared against, not the count). `18cdeb9` was
+live-verified through three independent paths before it was committed —
+running-server HTTP calls (`GET /companies/{ticker}?source=yfinance` and
+`GET /assets/{ticker}/price`) against 22 real tickers across all 9 markets,
+that same server's own access log (confirming no `--reload` subprocess or
+import error was involved in either of the two server invocations used
+this session), and a direct script calling
+`company_service.get_company_identity()` / `price_service.get_price()` —
+the literal functions the API routes call — bypassing uvicorn entirely.
+All three agreed on real `Market`/`Exchange`/`Currency` values and
+non-empty OHLC history for every market, including Hong Kong and Saudi
+Arabia specifically re-verified after a request to confirm the live-check
+claim wasn't just a summary of a prior run.
