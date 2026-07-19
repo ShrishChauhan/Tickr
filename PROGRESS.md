@@ -2360,3 +2360,109 @@ Amsterdam, Brussels, Dublin, Lisbon, Milan, Oslo, Athens), confirming correct
 `Market`/`Exchange`/`Currency` for all 8; (2) real running-server HTTP calls
 (`GET /api/v1/companies/{ticker}?source=yfinance`) against Oslo/Paris/Athens
 tickers, confirming the same over the wire; (3) full engine suite green.
+
+## Session 45 (Bucket-B, Chunk 2) — Nasdaq Nordic/Baltic: 7 new markets, commit `ba0b9c3` — 2026-07-19
+
+### What landed
+
+Six files, 134 insertions, 1 deletion: `schema/company.py` (`Market`
+DK/SE/FI/EE/LV/LT/IS; `Exchange` NASDAQ_COPENHAGEN/STOCKHOLM/HELSINKI/
+TALLINN/RIGA/VILNIUS/ICELAND; `Currency` DKK/SEK/ISK), `adapters/yfinance.py`
+(`_EXCHANGE_MAP`, `_SUFFIX_MAP` for `.CO`/`.ST`/`.HE`/`.TL`/`.RG`/`.VS`/`.IC`,
+`_CURRENCY_MAP`, `_CURRENCY_TO_MARKET`), `services/company.py`
+(`EXCHANGE_DISPLAY`, `_CURRENCY_TO_MARKET` mirrored), `services/countries.py`
+(`MARKET_EXCHANGES`, `COUNTRY_UNIVERSE_KEYS`, `LINKED_COUNTRIES` for
+DNK/SWE/FIN/EST/LVA/LTU/ISL), `web/lib/format.ts` (`CURRENCY_SYMBOL` gets
+DKK/SEK/ISK entries, all `'kr'`), and `tests/test_countries.py` (22 new
+parametrized cases). Same per-city-as-its-own-country-scoped-`Market` pattern
+as Euronext — no new multi-country concept. Finland/Estonia/Latvia/Lithuania
+reuse the existing `Currency.EUR`; only Denmark, Sweden, and Iceland needed
+new currencies.
+
+### Live verification — regression re-check plus 5 fresh markets
+
+All 7 markets were live-verified fresh this session (2-3 tickers each, 16
+tickers total), not carried forward from the prior investigation session
+unchecked: Copenhagen and Stockholm were re-verified as a regression check
+(`NOVO-B.CO`/`MAERSK-B.CO`, `VOLV-B.ST`/`ERIC-B.ST` — both still clean),
+Helsinki/Tallinn/Riga/Vilnius/Iceland verified fresh for the first time
+(`NOKIA.HE`/`SAMPO.HE`/`KNEBV.HE`, `TAL1T.TL`/`LHV1T.TL`, `IDX1R.RG`/
+`DGR1R.RG`, `IGN1L.VS`/`APG1L.VS`, `EIK.IC`/`SIMINN.IC`/`BRIM.IC`). No
+subunit-scaling quirk like Johannesburg's ZAc surfaced anywhere in this
+group — all 16 tickers' `currency` field resolved cleanly to the expected
+unit.
+
+Raw `.info["exchange"]` codes were queried live rather than guessed, same
+discipline as Euronext's PAR/AMS/BRU/ISE/LIS/MIL/OSL/ATH discovery: `CPH`
+(Copenhagen), `STO` (Stockholm), `HEL` (Helsinki), `TAL` (Tallinn), `RIS`
+(Riga), `LIT` (Vilnius), `ICE` (Iceland) — none collide with any existing
+`_EXCHANGE_MAP` key.
+
+One cosmetic flag, consistent with the prior investigation session's Iceland
+note: `financialCurrency` diverges from `currency` on 2 of the 16 tickers
+(Maersk: trades in DKK, reports in USD; Brim: trades in ISK, reports in EUR)
+— not a new bug, the same pre-existing `financialCurrency`/`currency`
+mismatch flagged for Naspers in Session 43, and cosmetic only since
+`currency` (what Tickr actually consumes for price display) stayed clean
+throughout.
+
+### What this explicitly is not (flagged, not fixed)
+
+Same two items flagged in every Bucket-A/B chunk so far, still unresolved:
+
+1. The `EXCHANGE_DISPLAY` (`services/company.py`) / `_EXCHANGE_MAP`
+   (`adapters/yfinance.py`) duplicate-map drift — mirrored by hand again,
+   not resolved.
+2. `web/lib/format.ts`'s `fmtPrice` hardcodes a symbol prefix only for
+   USD/EUR/GBP; DKK/SEK/ISK (like NOK and the 6 Bucket-A currencies before
+   them) fall through to the generic `"{value} {currency}"` suffix
+   rendering. `CURRENCY_SYMBOL` does get correct `'kr'` entries for all
+   three — only `fmtPrice`'s own separate hardcoded branch has the gap.
+
+### Process note: a real infrastructure snag during verification, not a code bug
+
+Verifying step (2) of the 3-path standard (real HTTP through a running
+engine) hit a genuine environment issue worth recording as a known failure
+mode, since it cost significant time to diagnose and could recur in a future
+session. Two separate things, both resolved without touching product code:
+
+1. **The Postgres-backed L2 cache survives a server restart.** An early
+   HTTP query against the dev server (made before noticing it was running
+   stale pre-chunk code) got a wrong result cached with a 7-day TTL. The L1
+   in-process cache clears on restart (by design — see `cache/memory.py`),
+   but L2 doesn't, so restarting the server alone did not clear the bad
+   result; the specific poisoned `yfinance:company:{ticker}` rows had to be
+   deleted directly from `cache_entries` before a restart produced correct
+   output. A cache staying poisoned across a restart is not itself a sign
+   the code is wrong — check L2 before concluding a fresh process is
+   serving fresh code.
+2. **`netstat`/`taskkill` gave contradictory answers about what was bound to
+   port 8000.** At one point `netstat -ano` reported three different PIDs
+   simultaneously `LISTENING` on the same port, while `tasklist` reported
+   none of those PIDs existed, and `taskkill` on them either errored "not
+   found" or claimed success while the port kept serving stale data
+   afterward. Resolved only by a manual, full sweep of `python.exe`
+   processes from Task Manager outside the sandboxed shell. Worth knowing
+   for future sessions: this environment's process/port introspection tools
+   can disagree with reality, and that disagreement is not evidence of a
+   code problem — it's a tooling reliability issue to work around (e.g. by
+   verifying against a freshly-chosen, never-used port first, as this
+   session did on 8321, before trusting the primary dev port).
+
+### Verified
+
+216/216 tests passing (194 → 216, +22: 7 suffix-resolution + 7
+market-exchange + 7 linked-country + 1 combined DKK/SEK/ISK currency-map
+case). The count was reconciled exactly, same method as Euronext: `git
+stash` isolated the pre-chunk baseline at 194 collected tests, `git stash
+pop` restored the chunk's changes back to 216.
+
+Same 3-path standard as every prior chunk, all independently confirmed
+against the actual running dev server after the cache/process issue above
+was resolved: (1) a direct script calling `YFinanceAdapter.get_company()`
+for one real ticker per new market, confirming correct `Market`/`Exchange`/
+`Currency` for all 7; (2) real running-server HTTP calls (`GET
+/api/v1/companies/{ticker}?source=yfinance`) against Copenhagen/Stockholm/
+Tallinn/Iceland tickers plus a Toronto regression check, confirming the same
+over the wire, cross-checked byte-for-byte against the corresponding
+Postgres `cache_entries` row; (3) full engine suite green.
