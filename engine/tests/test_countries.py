@@ -1,9 +1,13 @@
 # Country entity spine tests — schema/country.py + services/countries.py.
 # No network calls; this chunk is static reference data only.
-from app.schema import Country, Exchange, Market
+import pytest
+
+from app.adapters.yfinance import _SUFFIX_MAP
+from app.schema import Country, Currency, Exchange, Market
 from app.services import countries
 from app.services.countries import (
     COUNTRY_UNIVERSE_KEYS,
+    LINKED_COUNTRIES,
     MARKET_EXCHANGES,
     get_country,
     get_major_companies,
@@ -90,6 +94,73 @@ def test_universe_keys_are_a_subset_of_known_universe_keys():
 def test_every_known_universe_is_referenced_by_some_market():
     referenced = {key for keys in COUNTRY_UNIVERSE_KEYS.values() for key in keys}
     assert referenced == set(known_universe_keys())
+
+
+# ---------------------------------------------------------------------------
+# Bucket-A market correctness (9 markets added in commit 18cdeb9). The checks
+# above only assert "some entry exists" for every Market; these assert the
+# entry is the SPECIFIC Exchange/Market/Currency combination live-verified
+# that session — a typo in any of these would previously pass CI silently.
+# ---------------------------------------------------------------------------
+
+_NEW_MARKET_SUFFIXES = [
+    (".TO", Exchange.TSX,     Market.CA, Currency.CAD),
+    (".AX", Exchange.ASX,     Market.AU, Currency.AUD),
+    (".SW", Exchange.SIX,     Market.CH, Currency.CHF),
+    (".KS", Exchange.KOSPI,   Market.KR, Currency.KRW),
+    (".KQ", Exchange.KOSDAQ,  Market.KR, Currency.KRW),
+    (".TW", Exchange.TWSE,    Market.TW, Currency.TWD),
+    (".HK", Exchange.HKEX,    Market.HK, Currency.HKD),
+    (".SS", Exchange.SSE,     Market.CN, Currency.CNY),
+    (".SZ", Exchange.SZSE,    Market.CN, Currency.CNY),
+    (".SR", Exchange.TADAWUL, Market.SA, Currency.SAR),
+]
+
+
+@pytest.mark.parametrize("suffix,expected_exchange,expected_market,expected_currency", _NEW_MARKET_SUFFIXES)
+def test_new_market_suffix_resolves_correctly(suffix, expected_exchange, expected_market, expected_currency):
+    exchange, market, currency = _SUFFIX_MAP[suffix]
+    assert exchange == expected_exchange
+    assert market == expected_market
+    assert currency == expected_currency
+
+
+_NEW_MARKET_EXCHANGES = [
+    (Market.CA, [Exchange.TSX]),
+    (Market.AU, [Exchange.ASX]),
+    (Market.CH, [Exchange.SIX]),
+    (Market.KR, [Exchange.KOSPI, Exchange.KOSDAQ]),
+    (Market.TW, [Exchange.TWSE]),
+    (Market.HK, [Exchange.HKEX]),
+    (Market.CN, [Exchange.SSE, Exchange.SZSE]),
+    (Market.SA, [Exchange.TADAWUL]),
+]
+
+
+@pytest.mark.parametrize("market,expected_exchanges", _NEW_MARKET_EXCHANGES)
+def test_new_market_exchanges_are_correct(market, expected_exchanges):
+    assert MARKET_EXCHANGES[market] == expected_exchanges
+
+
+_NEW_LINKED_COUNTRIES = [
+    ("CAN", "CA", "Canada", Market.CA),
+    ("AUS", "AU", "Australia", Market.AU),
+    ("CHE", "CH", "Switzerland", Market.CH),
+    ("KOR", "KR", "South Korea", Market.KR),
+    ("TWN", "TW", "Taiwan", Market.TW),
+    ("HKG", "HK", "Hong Kong", Market.HK),
+    ("CHN", "CN", "China", Market.CN),
+    ("SAU", "SA", "Saudi Arabia", Market.SA),
+]
+
+
+@pytest.mark.parametrize("iso3,iso2,name,market", _NEW_LINKED_COUNTRIES)
+def test_new_linked_country_is_correct(iso3, iso2, name, market):
+    country = LINKED_COUNTRIES[iso3]
+    assert country.iso2 == iso2
+    assert country.name == name
+    assert country.market == market
+    assert country.exchanges == MARKET_EXCHANGES[market]
 
 
 # ---------------------------------------------------------------------------
