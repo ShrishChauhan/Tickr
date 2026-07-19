@@ -1648,7 +1648,7 @@ num_trades), and a PROGRESS.md/CLAUDE.md close-out entry for the whole arc.
 ## Session 37 (Phase 8, slice 4 — composer frontend, Session 3) — end-to-end browser verification, edge cases, close-out — 2026-07-13
 
 Note, discovered this session: composer Session 2 (wiring + results display,
-commit `2a61e01`) also has no dedicated PROGRESS.md entry of its own — the
+commit `ceb9c7b`) also has no dedicated PROGRESS.md entry of its own — the
 same documentation gap Session 36 flagged for slice 3's engine endpoint
 (commit `1ff6367`), now doubled. Both commits carry thorough messages
 (design rationale, files touched, verification performed) so the record
@@ -1760,7 +1760,7 @@ This closes the full rule-based backtest composer arc, front to back:
 - **Session 36 (composer Session 1)** — the rule-builder UI shell:
   `IndicatorPicker`, `RuleBuilder`, the Value/Indicator toggle, client-side
   submit gating. No backend call yet.
-- **Composer Session 2, commit `2a61e01`** (undocumented as its own session,
+- **Composer Session 2, commit `ceb9c7b`** (undocumented as its own session,
   flagged for the first time here) — wired the button to the endpoint;
   built `EquityCurveChart`, `SummaryStatsCards`, `MethodologyLine`,
   `TradeTable`; verified the SMA case via curl and one browser pass.
@@ -1979,3 +1979,63 @@ this architecture is what future data-source expansion (new exchanges,
 insider-trade feeds, news/sentiment) will plug into — a small, uniform,
 independently-verifiable registry entry instead of a bespoke integration
 each time.
+
+## Session 40 (P9.2 Chunks 4-5) — DataAdapter license tags + ARCHITECTURE.md close-out — 2026-07-18
+
+### Context
+
+Backfilling two commits — `4ccde9a` and `6cf4000` — that landed without their
+own session entries. Unlike the `1ff6367`/`ceb9c7b` gaps flagged in Sessions
+36/37/39 (thorough commit messages, deliberately not backfilled), this pair
+had genuinely no PROGRESS.md trace and CLAUDE.md's phase line still described
+Chunk 4 as future work ("Chunk 4 next") after it had already shipped. Found
+by a documentation-reconciliation audit that cross-referenced `git log`
+against PROGRESS.md session-by-session, not during the original work.
+
+### Chunk 4 — DataAdapter license tags (`4ccde9a`)
+
+- `DataAdapter` (`adapters/base.py`) gains an abstract `license` property,
+  mirroring the existing `source_name` property.
+- `EdgarAdapter.license` → `LoaderLicense.COMMERCIAL_OK` (public-domain SEC
+  data).
+- `YFinanceAdapter.license` → `LoaderLicense.PERSONAL_ONLY` (yfinance ToS).
+- Metadata only, per the commit's own message: no dispatch change —
+  `routes.py`, the `?source=` param, and cache keys are untouched. This
+  extends the `LoaderLicense` enum Chunk 1 introduced for the newer
+  `Loader`-protocol providers back onto the older `DataAdapter` interface, so
+  every source in the engine now carries a license classification, not just
+  the registry-based ones.
+
+### Chunk 5 — ARCHITECTURE.md close-out (`6cf4000`)
+
+Docs-only, no code (88-line diff to `ARCHITECTURE.md`, zero other files).
+Updates §4 (provider registry) to describe all three now-live data types
+(`quote`, `risk_free_rate`, `ohlc`) and their differing failure contracts
+(swallow-to-`None`/`([], None, None)` vs. `risk_free_rate`'s deliberate
+re-raise), documents `LoaderLicense` as metadata-only/not-yet-enforced, and
+states explicitly that `DataAdapter` (company/fundamentals/filings) stays
+outside this registry by design — it's dispatched by an explicit user-facing
+`?source=` choice, not automatic fallback. Also corrects a stale §5(d)/§6
+sizing estimate (Parquet was originally guessed at ~50KB/ticker; the real
+567-ticker backfill measured ~250KB/ticker, 117MB total — still ~1.4% of
+R2's free tier) and updates the Stooq→yfinance bulk-source note to match what
+actually shipped in Session 31. §9 Rule 1 rewritten to describe the two now-
+distinct source-facing shapes: `DataAdapter` (explicit `?source=` dispatch)
+vs. `Loader`-family protocols (automatic registry fallback).
+
+### Verified
+
+Read both commits' full diffs directly (`git show 4ccde9a`, `git show
+6cf4000`) before writing this entry, rather than reconstructing from commit
+subject lines alone.
+
+### Note
+
+This entry was written retroactively, after both commits had already landed,
+as part of a documentation-reconciliation session — not during the original
+Chunk 4/5 work. No code changed this session; this is a docs-only backfill.
+Separately, this same reconciliation pass corrected a stale commit-hash
+citation: PROGRESS.md (Sessions 36/37, above) had recorded composer Session
+2's wiring commit as `2a61e01`, which is not reachable from `main` — the real
+commit for that work, confirmed via `git log`, is `ceb9c7b`. Both references
+above are now fixed.
